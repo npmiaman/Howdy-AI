@@ -1,65 +1,155 @@
 import Image from "next/image";
+import Link from "next/link";
+import { Star } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Differentiation } from "@/components/differentiation";
+import { FAQ } from "@/components/faq";
+import { FinalCTA } from "@/components/final-cta";
+import { HowItWorks } from "@/components/how-it-works";
+import { MatchPreview } from "@/components/match-preview";
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+    <div className="flex min-h-screen flex-col">
+      <SiteHeader />
+      <main className="flex-1">
+        <section className="mx-auto w-full max-w-7xl px-6 pt-24 pb-4 lg:pt-36 lg:pb-8">
+          <Hero />
+        </section>
+        <section className="mx-auto w-full max-w-7xl px-6 pb-20 lg:pb-32">
+          <MatchPreview />
+          <StatStrip />
+        </section>
+        <HowItWorks />
+        <Differentiation />
+        <FinalCTA />
+        <FAQ />
       </main>
+      <SiteFooter />
     </div>
+  );
+}
+
+function SiteHeader() {
+  return (
+    <header className="fixed inset-x-0 top-0 z-50">
+      <nav className="mx-auto flex w-full max-w-7xl items-center justify-between px-8 py-6 md:px-12 lg:px-16">
+        <Link
+          href="/"
+          className="flex items-center gap-2 text-2xl font-medium tracking-tight"
+        >
+          <Image
+            src="/howdy-logo.png"
+            alt=""
+            width={48}
+            height={48}
+            className="size-11 shrink-0 invert mix-blend-screen"
+          />
+          Howdy
+        </Link>
+        <Button
+          asChild
+          variant="ghost"
+          className="h-12 rounded-full border border-white/20 bg-white/10 px-7 text-base font-medium text-white shadow-[0_8px_32px_rgba(0,0,0,0.25)] backdrop-blur-sm hover:border-white/30 hover:bg-white/20 hover:text-white"
+        >
+          <Link href="#message">Hire Talent</Link>
+        </Button>
+      </nav>
+    </header>
+  );
+}
+
+function Hero() {
+  return (
+    <div className="flex flex-col items-center text-center">
+      <h1 className="text-balance text-4xl font-normal leading-[1.1] tracking-tight md:text-5xl lg:text-[4.25rem]">
+        Hey, I&apos;m Howdy,
+        <br />
+        Your Freelance Talent Scout.
+      </h1>
+
+      <p className="mt-8 max-w-xl text-lg text-white/70 md:text-xl">
+        Need a designer, developer, editor, or specialist? I&apos;ll find them,
+        vet them,
+        <br />
+        and make the intro.
+      </p>
+
+      <div className="mt-8" id="message">
+        <Button
+          asChild
+          variant="ghost"
+          className="h-14 rounded-full border border-white/20 bg-white/10 px-10 text-base font-medium text-white shadow-[0_8px_32px_rgba(0,0,0,0.25)] backdrop-blur-sm hover:border-white/30 hover:bg-white/20 hover:text-white"
+        >
+          <Link href="#message">Start Hiring</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function StatStrip() {
+  return (
+    <div className="mt-12 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-white/70 md:text-base">
+      <span>
+        <span className="font-medium text-white">100+</span> vetted freelancers
+      </span>
+      <span aria-hidden className="size-1 rounded-full bg-white/30" />
+      <span>Hand-picked matches</span>
+      <span aria-hidden className="size-1 rounded-full bg-white/30" />
+      <span className="flex items-center gap-2">
+        <span className="flex">
+          {Array.from({ length: 5 }).map((_, i) => {
+            if (i < 4) {
+              return (
+                <Star
+                  key={i}
+                  className="size-3.5 fill-white text-white"
+                />
+              );
+            }
+            return (
+              <span
+                key={i}
+                aria-hidden
+                className="relative inline-block size-3.5"
+              >
+                <Star className="absolute inset-0 size-3.5 text-white/40" />
+                <Star
+                  className="absolute inset-0 size-3.5 fill-white text-white"
+                  style={{ clipPath: "inset(0 50% 0 0)" }}
+                />
+              </span>
+            );
+          })}
+        </span>
+        <span>
+          <span className="font-medium text-white">4.5</span> average rating
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function SiteFooter() {
+  return (
+    <footer>
+      <div className="mx-auto flex w-full max-w-7xl items-center px-8 py-10 md:px-12 lg:px-16">
+        <Link
+          href="/"
+          className="flex items-center gap-4 text-5xl font-medium tracking-tight md:text-6xl"
+        >
+          <Image
+            src="/howdy-logo.png"
+            alt=""
+            width={96}
+            height={96}
+            className="size-16 shrink-0 invert mix-blend-screen md:size-20"
+          />
+          Howdy
+        </Link>
+      </div>
+    </footer>
   );
 }
