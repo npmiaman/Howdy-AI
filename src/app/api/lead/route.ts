@@ -22,17 +22,32 @@ function welcomeBody(args: {
   position: string;
 }) {
   const firstName = args.fullName.split(" ")[0] ?? args.fullName;
-  const intro = args.company
-    ? `Hi ${firstName} — welcome from ${args.company}!`
-    : `Hi ${firstName} — welcome!`;
+  const opening = args.company
+    ? `Hey ${firstName}, glad you're hiring from ${args.company}.`
+    : `Hey ${firstName}, welcome aboard.`;
+
   return [
-    intro,
+    opening,
     "",
-    "I'm Howdy, your freelance talent scout. Tell me what you need built — designer, developer, editor, motion artist, anything — and I'll come back with a vetted match.",
+    "I'm Howdy, your AI freelance talent scout. I find vetted designers, developers, editors, motion artists, and other specialists, and I deliver one match per brief. No job boards. No 200-applicant inbox. No bidding wars.",
     "",
-    "Just reply to this email with what you're looking for. The more specific (timeline, budget, style references), the sharper the match.",
+    "Here's how it works:",
     "",
-    "— Howdy",
+    "1. Reply to this email and tell me what you're hiring for.",
+    "2. I'll ask a few clarifying questions to nail the brief.",
+    "3. Within 24 hours, you'll get one vetted match with their reel, rate, and availability.",
+    "",
+    "To get the sharpest match, try to include:",
+    "",
+    "  • The role (designer, developer, editor, writer, anything)",
+    "  • A bit about the project itself",
+    "  • Your timeline",
+    "  • A rough budget",
+    "  • Style references or examples you admire",
+    "",
+    "I'll handle the rest.",
+    "",
+    "Howdy",
   ].join("\n");
 }
 
@@ -68,9 +83,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const subject = company
-      ? `Welcome to Howdy, ${fullName.split(" ")[0]}`
-      : "Welcome to Howdy";
+    const subject = `Welcome to Howdy, ${fullName.split(" ")[0]}`;
     const body = welcomeBody({ fullName, company, position });
     const sent = await sendFreshEmail({ to: email, subject, text: body });
     return NextResponse.json({ ok: true, messageId: sent.messageId });
