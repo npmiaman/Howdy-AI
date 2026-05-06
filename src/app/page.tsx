@@ -2,10 +2,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { Star } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Differentiation } from "@/components/differentiation";
 import { FAQ } from "@/components/faq";
 import { FinalCTA } from "@/components/final-cta";
+import { HireButton } from "@/components/hire-button";
+import { HireDialog } from "@/components/hire-dialog";
 import { HowItWorks } from "@/components/how-it-works";
 import { MatchPreview } from "@/components/match-preview";
 
@@ -27,6 +28,7 @@ export default function Home() {
         <FAQ />
       </main>
       <SiteFooter />
+      <HireDialog />
     </div>
   );
 }
@@ -48,13 +50,9 @@ function SiteHeader() {
           />
           Howdy
         </Link>
-        <Button
-          asChild
-          variant="ghost"
-          className="h-12 rounded-full border border-white/20 bg-white/10 px-7 text-base font-medium text-white shadow-[0_8px_32px_rgba(0,0,0,0.25)] backdrop-blur-sm hover:border-white/30 hover:bg-white/20 hover:text-white"
-        >
-          <Link href="#message">Hire Talent</Link>
-        </Button>
+        <HireButton className="h-12 rounded-full border border-white/20 bg-white/10 px-7 text-base font-medium text-white shadow-[0_8px_32px_rgba(0,0,0,0.25)] backdrop-blur-sm hover:border-white/30 hover:bg-white/20 hover:text-white">
+          Hire Talent
+        </HireButton>
       </nav>
     </header>
   );
@@ -77,13 +75,9 @@ function Hero() {
       </p>
 
       <div className="mt-8" id="message">
-        <Button
-          asChild
-          variant="ghost"
-          className="h-14 rounded-full border border-white/20 bg-white/10 px-10 text-base font-medium text-white shadow-[0_8px_32px_rgba(0,0,0,0.25)] backdrop-blur-sm hover:border-white/30 hover:bg-white/20 hover:text-white"
-        >
-          <Link href="#message">Start Hiring</Link>
-        </Button>
+        <HireButton className="h-14 rounded-full border border-white/20 bg-white/10 px-10 text-base font-medium text-white shadow-[0_8px_32px_rgba(0,0,0,0.25)] backdrop-blur-sm hover:border-white/30 hover:bg-white/20 hover:text-white">
+          Start Hiring
+        </HireButton>
       </div>
     </div>
   );

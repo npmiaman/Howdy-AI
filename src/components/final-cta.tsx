@@ -1,4 +1,6 @@
-import Link from "next/link";
+"use client";
+
+import { openHireDialog } from "@/components/hire-dialog";
 
 export function FinalCTA() {
   return (
@@ -18,14 +20,14 @@ export function FinalCTA() {
       </p>
 
       <div className="mt-10">
-        <Link
-          href="#message"
+        <button
+          type="button"
+          onClick={openHireDialog}
           className="inline-flex h-14 items-center justify-center rounded-full bg-white px-10 text-base font-medium text-neutral-900 shadow-[0_8px_32px_rgba(0,0,0,0.25)] transition-colors hover:bg-white/90"
         >
           Get Started
-        </Link>
+        </button>
       </div>
-
     </section>
   );
 }
