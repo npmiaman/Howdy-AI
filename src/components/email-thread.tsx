@@ -52,43 +52,43 @@ export function EmailThread({
       <BrowserChrome />
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between border-b border-neutral-200 px-2 py-1 lg:px-3 lg:py-1.5">
+      <div className="flex items-center justify-between border-b border-neutral-200 px-2 py-1 md:px-3 md:py-1.5">
         <div className="flex items-center gap-0.5 text-neutral-600">
           <ToolbarButton>
-            <ArrowLeft className="size-4 lg:size-5" />
+            <ArrowLeft className="size-4 md:size-5" />
           </ToolbarButton>
-          <span className="mx-1.5 h-4 w-px bg-neutral-200 lg:mx-2 lg:h-5" />
+          <span className="mx-1.5 h-4 w-px bg-neutral-200 md:mx-2 md:h-5" />
           <ToolbarButton>
-            <Archive className="size-4 lg:size-5" />
-          </ToolbarButton>
-          <ToolbarButton>
-            <Trash2 className="size-4 lg:size-5" />
+            <Archive className="size-4 md:size-5" />
           </ToolbarButton>
           <ToolbarButton>
-            <Mail className="size-4 lg:size-5" />
+            <Trash2 className="size-4 md:size-5" />
+          </ToolbarButton>
+          <ToolbarButton>
+            <Mail className="size-4 md:size-5" />
           </ToolbarButton>
         </div>
         <div className="flex items-center gap-1">
-          <span className="text-[10px] text-neutral-500 lg:text-xs">
+          <span className="text-[10px] text-neutral-500 md:text-xs">
             1 of 423
           </span>
           <ToolbarButton>
-            <MoreVertical className="size-4 lg:size-5" />
+            <MoreVertical className="size-4 md:size-5" />
           </ToolbarButton>
         </div>
       </div>
 
       {/* Subject */}
-      <div className="flex items-start justify-between gap-2 px-3 pb-2 pt-3 lg:gap-3 lg:px-5 lg:pb-3 lg:pt-4">
-        <div className="flex flex-wrap items-start gap-1.5 lg:gap-2">
-          <h2 className="text-[14px] font-normal leading-tight lg:text-[18px]">
+      <div className="flex items-start justify-between gap-2 px-3 pb-2 pt-3 md:gap-3 md:px-5 md:pb-3 md:pt-4">
+        <div className="flex flex-wrap items-start gap-1.5 md:gap-2">
+          <h2 className="text-[14px] font-normal leading-tight md:text-[18px]">
             {subject}
           </h2>
-          <span className="mt-0.5 inline-flex items-center rounded border border-neutral-300 px-1 py-0.5 text-[9px] text-neutral-700 lg:mt-1 lg:px-1.5 lg:text-[10px]">
+          <span className="mt-0.5 inline-flex items-center rounded border border-neutral-300 px-1 py-0.5 text-[9px] text-neutral-700 md:mt-1 md:px-1.5 md:text-[10px]">
             Inbox
           </span>
         </div>
-        <Star className="mt-1 size-3.5 shrink-0 text-neutral-400 lg:mt-1.5 lg:size-4" />
+        <Star className="mt-1 size-3.5 shrink-0 text-neutral-400 md:mt-1.5 md:size-4" />
       </div>
 
       {/* Collapsed messages (all but the latest) */}
@@ -118,23 +118,23 @@ export function EmailThread({
 
 export function BrowserChrome() {
   return (
-    <div className="flex items-end gap-2 bg-[#e8e8e8] px-2 pt-2 lg:gap-3 lg:px-3 lg:pt-3">
-      <div className="flex items-center gap-1 pb-1.5 lg:gap-1.5 lg:pb-2.5">
-        <span className="size-2.5 rounded-full bg-[#FF5F57] lg:size-3" />
-        <span className="size-2.5 rounded-full bg-[#FEBC2E] lg:size-3" />
-        <span className="size-2.5 rounded-full bg-[#28C840] lg:size-3" />
+    <div className="flex items-end gap-2 bg-[#e8e8e8] px-2 pt-2 md:gap-3 md:px-3 md:pt-3">
+      <div className="flex items-center gap-1 pb-1.5 md:gap-1.5 md:pb-2.5">
+        <span className="size-2.5 rounded-full bg-[#FF5F57] md:size-3" />
+        <span className="size-2.5 rounded-full bg-[#FEBC2E] md:size-3" />
+        <span className="size-2.5 rounded-full bg-[#28C840] md:size-3" />
       </div>
-      <div className="flex h-7 items-center gap-1.5 rounded-t-md bg-white pl-2 pr-1.5 text-[11px] font-medium text-neutral-700 lg:h-9 lg:gap-2 lg:pl-3 lg:pr-2 lg:text-[13px]">
+      <div className="flex h-7 items-center gap-1.5 rounded-t-md bg-white pl-2 pr-1.5 text-[11px] font-medium text-neutral-700 md:h-9 md:gap-2 md:pl-3 md:pr-2 md:text-[13px]">
         <Image
           src="/gmail-icon.png"
           alt="Gmail"
           width={20}
           height={20}
-          className="size-4 shrink-0 lg:size-5"
+          className="size-4 shrink-0 md:size-5"
         />
         <span>Gmail</span>
-        <span className="ml-0.5 flex size-3.5 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-700 lg:ml-1 lg:size-4">
-          <X className="size-2.5 lg:size-3" strokeWidth={2.25} />
+        <span className="ml-0.5 flex size-3.5 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-700 md:ml-1 md:size-4">
+          <X className="size-2.5 md:size-3" strokeWidth={2.25} />
         </span>
       </div>
     </div>
@@ -161,10 +161,10 @@ function CollapsedEmail({ message }: { message: EmailMessage }) {
   return (
     <button
       type="button"
-      className="flex w-full items-center gap-2 border-t border-neutral-200 px-3 py-2 text-left transition-colors hover:bg-neutral-50 lg:gap-3 lg:px-5 lg:py-3"
+      className="flex w-full items-center gap-2 border-t border-neutral-200 px-3 py-2 text-left transition-colors hover:bg-neutral-50 md:gap-3 md:px-5 md:py-3"
     >
       <div
-        className={`flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-semibold text-white shadow-sm lg:size-8 lg:text-[12px] ${message.color}`}
+        className={`flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-semibold text-white shadow-sm md:size-8 md:text-[12px] ${message.color}`}
       >
         {message.avatarSrc ? (
           <Image
@@ -180,15 +180,15 @@ function CollapsedEmail({ message }: { message: EmailMessage }) {
           message.initial
         )}
       </div>
-      <div className="flex min-w-0 flex-1 items-baseline gap-1.5 lg:gap-2">
-        <span className="shrink-0 text-[11px] font-semibold text-neutral-900 lg:text-[13px]">
+      <div className="flex min-w-0 flex-1 items-baseline gap-1.5 md:gap-2">
+        <span className="shrink-0 text-[11px] font-semibold text-neutral-900 md:text-[13px]">
           {message.from}
         </span>
-        <span className="truncate text-[10px] text-neutral-500 lg:text-[12px]">
+        <span className="truncate text-[10px] text-neutral-500 md:text-[12px]">
           {message.snippet}
         </span>
       </div>
-      <span className="shrink-0 text-[9px] text-neutral-500 lg:text-[11px]">
+      <span className="shrink-0 text-[9px] text-neutral-500 md:text-[11px]">
         {message.time}
       </span>
     </button>
@@ -203,11 +203,11 @@ function ExpandedEmail({ message }: { message: EmailMessage }) {
 
   return (
     <div
-      className={`border-t border-neutral-200 px-3 pb-4 pt-3 animate-in fade-in ${slideClass} duration-500 lg:px-5 lg:pb-5 lg:pt-4`}
+      className={`border-t border-neutral-200 px-3 pb-4 pt-3 animate-in fade-in ${slideClass} duration-500 md:px-5 md:pb-5 md:pt-4`}
     >
-      <div className="flex items-start gap-2 lg:gap-3">
+      <div className="flex items-start gap-2 md:gap-3">
         <div
-          className={`flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[11px] font-semibold text-white shadow-sm lg:size-10 lg:text-[13px] ${message.color}`}
+          className={`flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[11px] font-semibold text-white shadow-sm md:size-10 md:text-[13px] ${message.color}`}
         >
           {message.avatarSrc ? (
             <Image
@@ -227,21 +227,21 @@ function ExpandedEmail({ message }: { message: EmailMessage }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <div className="text-[11px] leading-snug lg:text-[13px]">
+            <div className="text-[11px] leading-snug md:text-[13px]">
               <span className="font-semibold text-neutral-900">
                 {message.from}
               </span>{" "}
               <span className="text-neutral-500">&lt;{message.email}&gt;</span>
             </div>
-            <div className="flex items-center gap-1.5 text-[10px] text-neutral-500 lg:gap-2 lg:text-[11px]">
+            <div className="flex items-center gap-1.5 text-[10px] text-neutral-500 md:gap-2 md:text-[11px]">
               <span className="hidden sm:inline">{message.time}</span>
-              <Star className="size-3 text-neutral-400 lg:size-3.5" />
-              <Reply className="size-3 lg:size-3.5" />
-              <MoreVertical className="size-3 lg:size-3.5" />
+              <Star className="size-3 text-neutral-400 md:size-3.5" />
+              <Reply className="size-3 md:size-3.5" />
+              <MoreVertical className="size-3 md:size-3.5" />
             </div>
           </div>
 
-          <div className="mt-2 space-y-2 text-[12px] leading-relaxed lg:mt-3 lg:space-y-2.5 lg:text-[13px]">
+          <div className="mt-2 space-y-2 text-[12px] leading-relaxed md:mt-3 md:space-y-2.5 md:text-[13px]">
             {message.body}
           </div>
 
