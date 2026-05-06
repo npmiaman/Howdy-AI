@@ -7,6 +7,7 @@ import {
   replyToMessage,
 } from "@/lib/agentmail/client";
 import { runHowdyTurn } from "@/lib/howdy/agent";
+import { loadMemories } from "@/lib/howdy/memories";
 import {
   appendMessage,
   findOrCreateThread,
@@ -100,12 +101,15 @@ export async function POST(request: Request) {
     const messagesForAgent =
       history.length > 0 ? history : [new HumanMessage(email.body)];
 
+    const memories = await loadMemories(email.fromEmail);
+
     const turn = await runHowdyTurn({
       messages: messagesForAgent,
       brief: thread.brief,
       threadId: thread.id,
       userEmail: email.fromEmail,
       subject: email.subject,
+      memories,
     });
 
     await saveBrief(thread.id, turn.brief);

@@ -13,6 +13,7 @@ import {
 } from "./extractor";
 import { getChatModel } from "./llm";
 import { findBestMatch } from "./matcher";
+import { memoriesAsContext } from "./memories";
 import {
   type PendingMatch,
   schedulePendingMatch,
@@ -44,6 +45,10 @@ const HowdyState = Annotation.Root({
     reducer: (_curr, next) => next,
     default: () => null,
   }),
+  memories: Annotation<string[]>({
+    reducer: (_curr, next) => next,
+    default: () => [],
+  }),
 });
 
 type HowdyStateType = typeof HowdyState.State;
@@ -51,7 +56,11 @@ type HowdyStateType = typeof HowdyState.State;
 async function extractNode(
   state: HowdyStateType,
 ): Promise<Partial<HowdyStateType>> {
-  const updated = await extractBrief(state.messages, state.brief);
+  const updated = await extractBrief(
+    state.messages,
+    state.brief,
+    memoriesAsContext(state.memories),
+  );
   return { brief: updated };
 }
 
@@ -61,6 +70,7 @@ Your job in THIS turn is to ask ONE precise clarifying question that will most i
 
 Rules:
 - Look at the FULL conversation history (Howdy + Hirer). NEVER repeat a topic you've already asked about — they may have answered partially or you might already have the info.
+- If a "Things you already know" memory section is provided, NEVER ask about facts contained there (e.g. don't ask their name, company, or role if you already know it).
 - Pick the SINGLE highest-priority unanswered topic from this priority list:
   1. Concrete project description (what are they building / why does this work matter?)
   2. Deadline / timeline
@@ -77,11 +87,12 @@ async function clarifyNode(
   state: HowdyStateType,
 ): Promise<Partial<HowdyStateType>> {
   const { missing, filled, total } = briefCompleteness(state.brief);
+  const memoryBlock = memoriesAsContext(state.memories);
   const llm = getChatModel();
   const reply = await llm.invoke([
     new SystemMessage(CLARIFY_SYSTEM_PROMPT),
     new HumanMessage(
-      `Conversation so far:
+      `${memoryBlock ? memoryBlock + "\n\n" : ""}Conversation so far:
 ${state.messages
   .map((m) => `${m.getType() === "human" ? "Hirer" : "Howdy"}: ${m.content}`)
   .join("\n")}
@@ -91,7 +102,7 @@ ${JSON.stringify(state.brief, null, 2)}
 
 Brief is ${filled}/${total} fields filled. Still missing: ${missing.join(", ") || "none"}.
 
-Pick the single highest-priority unanswered topic from your priority list and ask one focused question. Don't repeat anything you've already asked about.`,
+Pick the single highest-priority unanswered topic from your priority list and ask one focused question. Don't repeat anything you've already asked about, and don't ask anything that's already in the memory context.`,
     ),
   ]);
   const text =
@@ -165,6 +176,7 @@ export type AgentInput = {
   threadId?: string;
   userEmail?: string;
   subject?: string;
+  memories?: string[];
 };
 
 export type AgentOutput = {
@@ -181,6 +193,7 @@ export async function runHowdyTurn(input: AgentInput): Promise<AgentOutput> {
     threadId: input.threadId ?? null,
     userEmail: input.userEmail ?? null,
     subject: input.subject ?? null,
+    memories: input.memories ?? [],
   });
   const lastMessage = result.messages[result.messages.length - 1];
   const reply =

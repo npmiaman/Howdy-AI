@@ -5,6 +5,12 @@ import {
   isAgentMailConfigured,
   sendFreshEmail,
 } from "@/lib/agentmail/client";
+import { saveMemories } from "@/lib/howdy/memories";
+import {
+  appendMessage,
+  findOrCreateThread,
+} from "@/lib/howdy/threads";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -66,13 +72,40 @@ export async function POST(request: Request) {
     const subject = `Welcome to Howdy, ${fullName.split(" ")[0]}`;
     const body = welcomeBody({ fullName, company, position });
     const sent = await sendFreshEmail({ to: email, subject, text: body });
+
+    // Register the thread + welcome message in Supabase so when they reply,
+    // the webhook continues the existing conversation instead of starting fresh.
+    if (isSupabaseConfigured() && sent.threadId) {
+      try {
+        const thread = await findOrCreateThread({
+          gmailThreadId: sent.threadId,
+          userEmail: email,
+          subject,
+        });
+        await appendMessage({
+          threadId: thread.id,
+          role: "ai",
+          content: body,
+          gmailMessageId: sent.messageId,
+        });
+        // Seed long-term memory: who is this person, where do they work.
+        const facts: string[] = [`Name: ${fullName}.`];
+        if (company) facts.push(`Company: ${company}.`);
+        if (position) facts.push(`Position: ${position}.`);
+        await saveMemories({ userEmail: email, facts });
+      } catch (persistErr) {
+        // Don't fail the user-facing request if logging falls over.
+        console.warn(
+          "[/api/lead] thread/memory persistence failed:",
+          persistErr,
+        );
+      }
+    }
+
     return NextResponse.json({ ok: true, messageId: sent.messageId });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error("[/api/lead] AgentMail send failed:", detail);
-    return NextResponse.json(
-      { ok: false, error: detail },
-      { status: 502 },
-    );
+    return NextResponse.json({ ok: false, error: detail }, { status: 502 });
   }
 }

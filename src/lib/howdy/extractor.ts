@@ -12,11 +12,14 @@ Rules:
 - If a field has not been mentioned, return null for it.
 - Merge with any existing brief data passed in. Do not overwrite a field with null if it was previously filled, unless the user explicitly contradicts it.
 - Be conservative on numbers (e.g. budget). Only fill if a number was given.
-- Return strict JSON matching the schema.`;
+- Return strict JSON matching the schema.
+
+If a "Things you already know" section is provided, treat it as background context only. Do NOT copy those facts into the brief unless the user has actually mentioned them in this conversation.`;
 
 export async function extractBrief(
   messages: BaseMessage[],
   previousBrief: Brief = EMPTY_BRIEF,
+  memoryContext: string = "",
 ): Promise<Brief> {
   const llm = getChatModel().withStructuredOutput(BriefSchema, {
     name: "brief",
@@ -29,10 +32,14 @@ export async function extractBrief(
     })
     .join("\n");
 
+  const memoryBlock = memoryContext.trim()
+    ? `${memoryContext}\n\n`
+    : "";
+
   const input = [
     new SystemMessage(EXTRACT_SYSTEM_PROMPT),
     new HumanMessage(
-      `Previous brief (may be partial):\n${JSON.stringify(previousBrief, null, 2)}\n\nConversation so far:\n${conversation}\n\nReturn the merged brief.`,
+      `${memoryBlock}Previous brief (may be partial):\n${JSON.stringify(previousBrief, null, 2)}\n\nConversation so far:\n${conversation}\n\nReturn the merged brief.`,
     ),
   ];
 

@@ -6,6 +6,7 @@ import {
   sendFreshEmail,
 } from "@/lib/agentmail/client";
 import { runScheduledMatch } from "@/lib/howdy/agent";
+import { saveMemories } from "@/lib/howdy/memories";
 import {
   listDuePendingMatches,
   markPendingProcessed,
@@ -102,6 +103,22 @@ export async function GET(request: Request) {
         matchedFreelancerId: match?.freelancer.id ?? null,
         replyMessageId: null,
       });
+
+      // Save long-term memory facts so the next conversation can pick up where
+      // this one ended (without re-asking everything).
+      if (match) {
+        const facts = [
+          `Previously hired role: ${pending.brief.role}.`,
+          ...(pending.brief.references?.length
+            ? [`Style references they like: ${pending.brief.references.join(", ")}.`]
+            : []),
+          ...(pending.brief.budget_usd_per_hour_max
+            ? [`Typical budget: ~$${pending.brief.budget_usd_per_hour_max}/hr.`]
+            : []),
+          `Last match: ${match.freelancer.name} (${match.freelancer.role}).`,
+        ];
+        await saveMemories({ userEmail: pending.userEmail, facts });
+      }
 
       results.push({
         id: pending.id,
