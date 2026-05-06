@@ -25,30 +25,30 @@ const ROWS = [
 
 export function Differentiation() {
   return (
-    <section className="mx-auto w-full max-w-5xl px-6 py-24 lg:py-32">
-      <div className="mb-12 text-center">
-        <p className="mb-4 text-xs font-medium uppercase tracking-[0.18em] text-white/50">
+    <section className="mx-auto w-full max-w-5xl px-4 py-16 sm:px-6 md:py-24 lg:py-32">
+      <div className="mb-8 text-center md:mb-12">
+        <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-white/50 md:mb-4 md:text-xs">
           Why Howdy
         </p>
-        <h2 className="text-balance text-3xl leading-tight tracking-tight md:text-4xl lg:text-5xl">
+        <h2 className="text-balance text-2xl leading-tight tracking-tight md:text-4xl lg:text-5xl">
           What changes when you use Howdy
         </h2>
-        <p className="mx-auto mt-6 max-w-2xl text-balance text-lg text-white/60">
+        <p className="mx-auto mt-4 max-w-2xl text-balance text-sm text-white/60 md:mt-6 md:text-lg">
           Skip the noise. Get a match that actually fits, faster.
         </p>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md">
         {/* Header row */}
-        <div className="grid grid-cols-[1.4fr_1fr_1fr] items-center border-b border-white/10">
-          <div className="px-5 py-4 text-xs font-medium uppercase tracking-[0.14em] text-white/50">
+        <div className="grid grid-cols-[1.2fr_1fr_1fr] items-center border-b border-white/10 md:grid-cols-[1.4fr_1fr_1fr]">
+          <div className="px-3 py-3 text-[10px] font-medium uppercase tracking-[0.14em] text-white/50 md:px-5 md:py-4 md:text-xs">
             What you get
           </div>
-          <div className="border-l border-white/10 bg-white/10 px-5 py-4 text-center text-base font-medium">
+          <div className="border-l border-white/10 bg-white/10 px-3 py-3 text-center text-sm font-medium md:px-5 md:py-4 md:text-base">
             Howdy
           </div>
-          <div className="border-l border-white/10 px-5 py-4 text-center text-sm text-white/60">
-            Other Freelance Portals
+          <div className="border-l border-white/10 px-3 py-3 text-center text-[11px] text-white/60 md:px-5 md:py-4 md:text-sm">
+            Other Portals
           </div>
         </div>
 
@@ -56,19 +56,19 @@ export function Differentiation() {
         {ROWS.map((row, i) => (
           <div
             key={row.feature}
-            className={`grid grid-cols-[1.4fr_1fr_1fr] items-stretch ${
+            className={`grid grid-cols-[1.2fr_1fr_1fr] items-stretch md:grid-cols-[1.4fr_1fr_1fr] ${
               i < ROWS.length - 1 ? "border-b border-white/10" : ""
             }`}
           >
-            <div className="px-5 py-5 text-base font-medium">
+            <div className="px-3 py-3 text-sm font-medium md:px-5 md:py-5 md:text-base">
               {row.feature}
             </div>
-            <div className="flex items-center gap-2 border-l border-white/10 bg-white/10 px-5 py-5 text-sm">
-              <Check className="size-4 shrink-0 text-emerald-400" />
+            <div className="flex items-center gap-1.5 border-l border-white/10 bg-white/10 px-3 py-3 text-xs md:gap-2 md:px-5 md:py-5 md:text-sm">
+              <Check className="size-3.5 shrink-0 text-emerald-400 md:size-4" />
               <span>{row.howdy}</span>
             </div>
-            <div className="flex items-center gap-2 border-l border-white/10 px-5 py-5 text-sm text-white/60">
-              <X className="size-4 shrink-0 text-white/30" />
+            <div className="flex items-center gap-1.5 border-l border-white/10 px-3 py-3 text-xs text-white/60 md:gap-2 md:px-5 md:py-5 md:text-sm">
+              <X className="size-3.5 shrink-0 text-white/30 md:size-4" />
               <span>{row.others}</span>
             </div>
           </div>

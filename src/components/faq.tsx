@@ -29,17 +29,17 @@ const FAQS = [
 
 export function FAQ() {
   return (
-    <section className="mx-auto w-full max-w-3xl px-6 py-24 lg:py-32">
-      <div className="mb-12 text-center">
-        <p className="mb-4 text-xs font-medium uppercase tracking-[0.18em] text-white/50">
+    <section className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6 md:py-24 lg:py-32">
+      <div className="mb-8 text-center md:mb-12">
+        <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-white/50 md:mb-4 md:text-xs">
           FAQ
         </p>
-        <h2 className="text-balance text-3xl leading-tight tracking-tight md:text-4xl lg:text-5xl">
+        <h2 className="text-balance text-2xl leading-tight tracking-tight md:text-4xl lg:text-5xl">
           Things people ask
         </h2>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2 md:space-y-3">
         {FAQS.map((faq) => (
           <FAQItem key={faq.q} question={faq.q} answer={faq.a} />
         ))}

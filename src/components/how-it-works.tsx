@@ -147,13 +147,13 @@ export function HowItWorks() {
       style={{ height: `${STEPS.length * 100}vh` }}
     >
       <div className="sticky top-0 flex h-screen items-center">
-        <div className="mx-auto grid w-full max-w-5xl grid-cols-1 items-center gap-10 px-6 lg:grid-cols-2 lg:gap-10">
+        <div className="mx-auto grid w-full max-w-5xl grid-cols-1 items-center gap-6 px-4 sm:px-6 md:gap-10 lg:grid-cols-2">
           {/* Left: heading + vertical sidebar steps */}
           <div className="flex flex-col">
-            <p className="mb-4 text-xs font-medium uppercase tracking-[0.18em] text-white/50">
+            <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-white/50 md:mb-4 md:text-xs">
               How it works
             </p>
-            <h2 className="mb-12 text-balance text-3xl leading-tight tracking-tight md:text-4xl lg:text-5xl">
+            <h2 className="mb-6 text-balance text-2xl leading-tight tracking-tight md:mb-12 md:text-4xl lg:text-5xl">
               From your brief to a vetted match in four steps.
             </h2>
 
