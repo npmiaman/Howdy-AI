@@ -232,13 +232,13 @@ function StepCard({
       }`}
     >
       <div className="flex w-full flex-col gap-3 md:w-1/2 md:gap-4">
-        <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-white/40 md:text-xs">
+        <span className="text-xs font-medium uppercase tracking-[0.2em] text-white/40 md:text-sm">
           Step 0{index + 1}
         </span>
-        <h3 className="text-balance text-xl leading-tight tracking-tight md:text-2xl">
+        <h3 className="text-balance text-2xl leading-tight tracking-tight md:text-3xl">
           {step.title}
         </h3>
-        <p className="text-sm text-white/60 md:text-base">{step.description}</p>
+        <p className="text-base text-white/70 md:text-lg">{step.description}</p>
       </div>
       <div className="flex w-full justify-center md:w-1/2">
         <EmailThread
