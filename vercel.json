@@ -2,7 +2,8 @@
   "crons": [
     {
       "path": "/api/howdy/process-pending",
-      "schedule": "* * * * *"
+      "schedule": "0 9 * * *"
     }
   ]
 }
+

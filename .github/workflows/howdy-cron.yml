@@ -1,0 +1,38 @@
+name: Howdy cron — drain pending matches
+
+# Runs every minute. Vercel Hobby caps cron at once-per-day, so we use GH Actions
+# to hit the route on the production deploy. Free + no plan upgrade needed.
+#
+# Required GitHub Actions secrets:
+#   HOWDY_DEPLOYMENT_URL   — e.g. https://bchowdy.vercel.app  (no trailing slash)
+#   CRON_SECRET            — must match the same env var on Vercel
+
+on:
+  schedule:
+    - cron: "* * * * *" # every minute
+  workflow_dispatch: {} # also trigger manually from the Actions tab
+
+concurrency:
+  group: howdy-cron
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit /api/howdy/process-pending
+        env:
+          BASE: ${{ secrets.HOWDY_DEPLOYMENT_URL }}
+          SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$BASE" ] || [ -z "$SECRET" ]; then
+            echo "Missing HOWDY_DEPLOYMENT_URL or CRON_SECRET secret" >&2
+            exit 1
+          fi
+          status=$(curl -sS -o /tmp/body.json -w "%{http_code}" \
+            -H "Authorization: Bearer $SECRET" \
+            "$BASE/api/howdy/process-pending")
+          echo "HTTP $status"
+          cat /tmp/body.json || true
+          # Treat anything 2xx as success.
+          [[ "$status" =~ ^2 ]]
