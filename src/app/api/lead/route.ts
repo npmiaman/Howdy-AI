@@ -25,7 +25,7 @@ function welcomeBody(args: {
   return [
     `Hey ${firstName},`,
     "",
-    "I'm Howdy. Reply with who you need to hire and I'll come back with a vetted match within 24 hours.",
+    "So what are you hiring for? Drop a few lines about the role, the project, and your timeline, and I'll come back with someone vetted by tomorrow.",
     "",
     "Howdy",
   ].join("\n");
