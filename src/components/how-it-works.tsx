@@ -118,8 +118,10 @@ export function HowItWorks() {
       const el = sectionRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
+      if (rect.height === 0) return; // hidden (mobile/tablet path)
       const viewportH = window.innerHeight;
       const totalScroll = rect.height - viewportH;
+      if (totalScroll <= 0) return;
       const scrolled = -rect.top;
       const progress = Math.max(0, Math.min(1, scrolled / totalScroll));
       const idx = Math.min(
@@ -141,57 +143,110 @@ export function HowItWorks() {
   }, []);
 
   return (
-    <section
-      ref={sectionRef}
-      className="relative w-full"
-      style={{ height: `${STEPS.length * 100}vh` }}
-    >
-      <div className="sticky top-0 flex h-screen items-center">
-        <div className="mx-auto grid w-full max-w-5xl grid-cols-1 items-center gap-6 px-4 sm:px-6 md:gap-10 lg:grid-cols-2">
-          {/* Left: heading + vertical sidebar steps */}
-          <div className="flex flex-col">
-            <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-white/50 md:mb-4 md:text-xs">
-              How it works
-            </p>
-            <h2 className="mb-6 text-balance text-2xl leading-tight tracking-tight md:mb-12 md:text-4xl lg:text-5xl">
-              From your brief to a vetted match in four steps.
-            </h2>
+    <>
+      {/* mobile + tablet: stacked cards (4) — alternate left/right at md+ */}
+      <section className="mx-auto w-full max-w-5xl px-4 py-16 sm:px-6 md:py-24 lg:hidden">
+        <div className="mb-10 text-center md:mb-14">
+          <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-white/50 md:text-xs">
+            How it works
+          </p>
+          <h2 className="text-balance text-2xl leading-tight tracking-tight md:text-4xl">
+            From your brief to a vetted match in four steps.
+          </h2>
+        </div>
 
-            <ol className="flex flex-col items-start gap-1.5">
-              {STEPS.map((s, i) => {
-                const active = i === step;
-                return (
-                  <li
-                    key={s.title}
-                    className={`rounded-lg px-4 py-2.5 transition-colors duration-500 ${
-                      active
-                        ? "border border-white/15 bg-white/10"
-                        : "border border-transparent"
-                    }`}
-                  >
-                    <span
-                      className={`block text-base leading-tight transition-opacity duration-500 md:text-lg ${
-                        active ? "opacity-100" : "opacity-40"
+        <div className="flex flex-col gap-14 md:gap-20">
+          {STEPS.map((s, i) => (
+            <StepCard key={s.title} step={s} index={i} />
+          ))}
+        </div>
+      </section>
+
+      {/* desktop: scroll-pinned sticky thread + sidebar tabs */}
+      <section
+        ref={sectionRef}
+        className="relative hidden w-full lg:block"
+        style={{ height: `${STEPS.length * 100}vh` }}
+      >
+        <div className="sticky top-0 flex h-screen items-center">
+          <div className="mx-auto grid w-full max-w-5xl grid-cols-2 items-center gap-10 px-6">
+            <div className="flex flex-col">
+              <p className="mb-4 text-xs font-medium uppercase tracking-[0.18em] text-white/50">
+                How it works
+              </p>
+              <h2 className="mb-12 text-balance text-4xl leading-tight tracking-tight lg:text-5xl">
+                From your brief to a vetted match in four steps.
+              </h2>
+
+              <ol className="flex flex-col items-start gap-1.5">
+                {STEPS.map((s, i) => {
+                  const active = i === step;
+                  return (
+                    <li
+                      key={s.title}
+                      className={`rounded-lg px-4 py-2.5 transition-colors duration-500 ${
+                        active
+                          ? "border border-white/15 bg-white/10"
+                          : "border border-transparent"
                       }`}
                     >
-                      {s.title}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
+                      <span
+                        className={`block text-lg leading-tight transition-opacity duration-500 ${
+                          active ? "opacity-100" : "opacity-40"
+                        }`}
+                      >
+                        {s.title}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
 
-          {/* Right: pinned email thread */}
-          <div className="flex justify-center lg:justify-end">
-            <EmailThread
-              subject={SUBJECT}
-              messages={MESSAGES}
-              currentStep={step}
-            />
+            <div className="flex justify-end">
+              <EmailThread
+                subject={SUBJECT}
+                messages={MESSAGES}
+                currentStep={step}
+              />
+            </div>
           </div>
         </div>
+      </section>
+    </>
+  );
+}
+
+function StepCard({
+  step,
+  index,
+}: {
+  step: (typeof STEPS)[number];
+  index: number;
+}) {
+  const imageOnLeft = index % 2 === 1;
+  return (
+    <div
+      className={`flex flex-col items-center gap-6 md:gap-10 ${
+        imageOnLeft ? "md:flex-row-reverse" : "md:flex-row"
+      }`}
+    >
+      <div className="flex w-full flex-col gap-3 md:w-1/2 md:gap-4">
+        <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-white/40 md:text-xs">
+          Step 0{index + 1}
+        </span>
+        <h3 className="text-balance text-xl leading-tight tracking-tight md:text-2xl">
+          {step.title}
+        </h3>
+        <p className="text-sm text-white/60 md:text-base">{step.description}</p>
       </div>
-    </section>
+      <div className="flex w-full justify-center md:w-1/2">
+        <EmailThread
+          subject={SUBJECT}
+          messages={MESSAGES}
+          currentStep={index}
+        />
+      </div>
+    </div>
   );
 }
