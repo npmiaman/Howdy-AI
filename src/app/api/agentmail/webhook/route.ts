@@ -8,6 +8,7 @@ import {
 } from "@/lib/agentmail/client";
 import { runHowdyTurn } from "@/lib/howdy/agent";
 import { loadMemories } from "@/lib/howdy/memories";
+import { lastSentMatchForThread } from "@/lib/howdy/scheduler";
 import {
   appendMessage,
   findOrCreateThread,
@@ -102,6 +103,7 @@ export async function POST(request: Request) {
       history.length > 0 ? history : [new HumanMessage(email.body)];
 
     const memories = await loadMemories(email.fromEmail);
+    const previousMatch = await lastSentMatchForThread(thread.id);
 
     const turn = await runHowdyTurn({
       messages: messagesForAgent,
@@ -110,6 +112,7 @@ export async function POST(request: Request) {
       userEmail: email.fromEmail,
       subject: email.subject,
       memories,
+      hasPreviousMatch: previousMatch !== null,
     });
 
     await saveBrief(thread.id, turn.brief);

@@ -138,6 +138,50 @@ export async function listDuePendingMatches(
   return [...(data ?? []).map(rowToPendingMatch), ...inMemory];
 }
 
+/**
+ * Has any match for this thread already been delivered? Used to flip the
+ * agent into "follow-up" mode so replies-after-match don't re-trigger
+ * another match-scheduling loop.
+ */
+export async function lastSentMatchForThread(
+  threadId: string,
+): Promise<{
+  matchedFreelancerId: string | null;
+  processedAt: Date;
+} | null> {
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from("pending_matches")
+      .select("matched_freelancer_id, processed_at")
+      .eq("thread_id", threadId)
+      .not("processed_at", "is", null)
+      .order("processed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.warn("[scheduler] lastSentMatchForThread failed:", error.message);
+      return null;
+    }
+    if (!data || !data.processed_at) return null;
+    return {
+      matchedFreelancerId: data.matched_freelancer_id ?? null,
+      processedAt: new Date(data.processed_at),
+    };
+  }
+  const found = memoryStore
+    .filter((pm) => pm.threadId === threadId && pm.processedAt !== null)
+    .sort(
+      (a, b) =>
+        (b.processedAt?.getTime() ?? 0) - (a.processedAt?.getTime() ?? 0),
+    )[0];
+  if (!found) return null;
+  return {
+    matchedFreelancerId: found.matchedFreelancerId,
+    processedAt: found.processedAt!,
+  };
+}
+
 export async function listAllPending(): Promise<PendingMatch[]> {
   const inMemory = memoryStore.filter((pm) => pm.processedAt === null);
   if (!isSupabaseConfigured()) return inMemory;

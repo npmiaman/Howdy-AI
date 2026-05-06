@@ -49,6 +49,11 @@ const HowdyState = Annotation.Root({
     reducer: (_curr, next) => next,
     default: () => [],
   }),
+  /** Set when a match has already been delivered on this thread. */
+  hasPreviousMatch: Annotation<boolean>({
+    reducer: (_curr, next) => next,
+    default: () => false,
+  }),
 });
 
 type HowdyStateType = typeof HowdyState.State;
@@ -152,21 +157,69 @@ async function scheduleNode(
   };
 }
 
-function decideRoute(state: HowdyStateType): "schedule" | "clarify" {
+function decideRoute(
+  state: HowdyStateType,
+): "schedule" | "clarify" | "followUp" {
+  // Once a match has been delivered on this thread, every subsequent reply
+  // is a follow-up — never re-trigger the matcher.
+  if (state.hasPreviousMatch) return "followUp";
   return briefIsActionable(state.brief) ? "schedule" : "clarify";
+}
+
+const FOLLOW_UP_SYSTEM_PROMPT = `You are Howdy, an AI freelancer-matching agent. The hirer is replying to a thread where you've ALREADY sent them a match.
+
+Your job in this turn is to write ONE short, human reply that handles whatever they just said. Do NOT re-run the search or schedule a new match.
+
+Possible cases:
+- They confirm / want the intro → reply that you'll send the intro and that you'll loop the freelancer in shortly.
+- They ask follow-up questions about the matched freelancer → answer based on what's in the conversation history; if you genuinely don't know, say so and offer to find out.
+- They want a different match (e.g. "anyone else?", "this one isn't a fit") → tell them you'll look for an alternative and to give you a moment. Don't promise a specific time.
+- They want to start a NEW project / hire someone different → say "got it, tell me about the new role and I'll start fresh".
+- They thank you / say bye → reply briefly and warmly.
+
+Rules:
+- Stay under 2-3 short sentences.
+- Sound like a human matchmaker, not a chatbot. Vary phrasing.
+- Reference what they wrote — don't be generic.
+- No greetings ("Hey X,") or signoffs unless it really fits.`;
+
+async function followUpNode(
+  state: HowdyStateType,
+): Promise<Partial<HowdyStateType>> {
+  const memoryBlock = memoriesAsContext(state.memories);
+  const llm = getChatModel();
+  const reply = await llm.invoke([
+    new SystemMessage(FOLLOW_UP_SYSTEM_PROMPT),
+    new HumanMessage(
+      `${memoryBlock ? memoryBlock + "\n\n" : ""}Conversation so far:
+${state.messages
+  .map((m) => `${m.getType() === "human" ? "Hirer" : "Howdy"}: ${m.content}`)
+  .join("\n")}
+
+The hirer just sent the latest "Hirer:" message. Write your reply.`,
+    ),
+  ]);
+  const text =
+    typeof reply.content === "string"
+      ? reply.content
+      : JSON.stringify(reply.content);
+  return { messages: [new AIMessage(text.trim())] };
 }
 
 const graph = new StateGraph(HowdyState)
   .addNode("extract", extractNode)
   .addNode("clarify", clarifyNode)
   .addNode("schedule", scheduleNode)
+  .addNode("followUp", followUpNode)
   .addEdge(START, "extract")
   .addConditionalEdges("extract", decideRoute, {
     schedule: "schedule",
     clarify: "clarify",
+    followUp: "followUp",
   })
   .addEdge("clarify", END)
-  .addEdge("schedule", END);
+  .addEdge("schedule", END)
+  .addEdge("followUp", END);
 
 export const howdyAgent = graph.compile();
 
@@ -177,6 +230,9 @@ export type AgentInput = {
   userEmail?: string;
   subject?: string;
   memories?: string[];
+  /** True if this thread has already received a match. Switches the agent
+   * into follow-up mode so it doesn't keep re-scheduling. */
+  hasPreviousMatch?: boolean;
 };
 
 export type AgentOutput = {
@@ -194,6 +250,7 @@ export async function runHowdyTurn(input: AgentInput): Promise<AgentOutput> {
     userEmail: input.userEmail ?? null,
     subject: input.subject ?? null,
     memories: input.memories ?? [],
+    hasPreviousMatch: input.hasPreviousMatch ?? false,
   });
   const lastMessage = result.messages[result.messages.length - 1];
   const reply =
