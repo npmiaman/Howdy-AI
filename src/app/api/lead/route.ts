@@ -22,30 +22,10 @@ function welcomeBody(args: {
   position: string;
 }) {
   const firstName = args.fullName.split(" ")[0] ?? args.fullName;
-  const opening = args.company
-    ? `Hey ${firstName}, glad you're hiring from ${args.company}.`
-    : `Hey ${firstName}, welcome aboard.`;
-
   return [
-    opening,
+    `Hey ${firstName},`,
     "",
-    "I'm Howdy, your AI freelance talent scout. I find vetted designers, developers, editors, motion artists, and other specialists, and I deliver one match per brief. No job boards. No 200-applicant inbox. No bidding wars.",
-    "",
-    "Here's how it works:",
-    "",
-    "1. Reply to this email and tell me what you're hiring for.",
-    "2. I'll ask a few clarifying questions to nail the brief.",
-    "3. Within 24 hours, you'll get one vetted match with their reel, rate, and availability.",
-    "",
-    "To get the sharpest match, try to include:",
-    "",
-    "  • The role (designer, developer, editor, writer, anything)",
-    "  • A bit about the project itself",
-    "  • Your timeline",
-    "  • A rough budget",
-    "  • Style references or examples you admire",
-    "",
-    "I'll handle the rest.",
+    "I'm Howdy. Reply with who you need to hire and I'll come back with a vetted match within 24 hours.",
     "",
     "Howdy",
   ].join("\n");
