@@ -10,7 +10,7 @@ import {
   appendMessage,
   findOrCreateThread,
 } from "@/lib/howdy/threads";
-import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -57,14 +57,46 @@ export async function POST(request: Request) {
   }
   const { fullName, company, position, email } = parsed.data;
 
+  // Capture the lead first, even if downstream email fails.
+  let leadId: string | null = null;
+  if (isSupabaseConfigured()) {
+    try {
+      const supabase = getSupabaseAdmin();
+      const ip =
+        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+      const userAgent = request.headers.get("user-agent") ?? null;
+      const { data, error } = await supabase
+        .from("leads")
+        .insert({
+          full_name: fullName,
+          company: company || null,
+          position: position || null,
+          email,
+          source: "hire-form",
+          ip_address: ip,
+          user_agent: userAgent,
+        })
+        .select("id")
+        .single();
+      if (error) {
+        console.warn("[/api/lead] lead insert failed:", error.message);
+      } else {
+        leadId = data?.id ?? null;
+      }
+    } catch (err) {
+      console.warn("[/api/lead] lead insert threw:", err);
+    }
+  }
+
   if (!isAgentMailConfigured()) {
     return NextResponse.json(
       {
-        ok: false,
-        error:
-          "AGENTMAIL_API_KEY is not set on the server, so the welcome email can't go out.",
+        ok: true,
+        leadCaptured: !!leadId,
+        warning:
+          "Lead saved, but AGENTMAIL_API_KEY isn't set so the welcome email didn't go out.",
       },
-      { status: 503 },
+      { status: 200 },
     );
   }
 
@@ -102,7 +134,11 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true, messageId: sent.messageId });
+    return NextResponse.json({
+      ok: true,
+      leadId,
+      messageId: sent.messageId,
+    });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error("[/api/lead] AgentMail send failed:", detail);
