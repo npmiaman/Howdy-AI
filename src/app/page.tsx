@@ -2,6 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { Star } from "lucide-react";
 
+import { ContactButton } from "@/components/contact-button";
+import { ContactDialog } from "@/components/contact-dialog";
 import { Differentiation } from "@/components/differentiation";
 import { FAQ } from "@/components/faq";
 import { FinalCTA } from "@/components/final-cta";
@@ -29,6 +31,7 @@ export default function Home() {
       </main>
       <SiteFooter />
       <HireDialog />
+      <ContactDialog />
     </div>
   );
 }
@@ -50,9 +53,14 @@ function SiteHeader() {
           />
           Howdy
         </Link>
-        <HireButton className="h-9 rounded-full border border-white/20 bg-white/10 px-4 text-sm font-medium text-white shadow-[0_8px_32px_rgba(0,0,0,0.25)] backdrop-blur-sm hover:border-white/30 hover:bg-white/20 hover:text-white md:h-12 md:px-7 md:text-base">
-          Hire Talent
-        </HireButton>
+        <div className="flex items-center gap-2 md:gap-3">
+          <ContactButton className="h-9 rounded-full border border-white/15 bg-transparent px-4 text-sm font-medium text-white/80 backdrop-blur-sm hover:border-white/30 hover:bg-white/10 hover:text-white md:h-12 md:px-6 md:text-base">
+            Contact
+          </ContactButton>
+          <HireButton className="h-9 rounded-full border border-white/20 bg-white/10 px-4 text-sm font-medium text-white shadow-[0_8px_32px_rgba(0,0,0,0.25)] backdrop-blur-sm hover:border-white/30 hover:bg-white/20 hover:text-white md:h-12 md:px-7 md:text-base">
+            Hire Talent
+          </HireButton>
+        </div>
       </nav>
     </header>
   );
