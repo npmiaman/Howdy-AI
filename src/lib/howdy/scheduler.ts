@@ -75,12 +75,20 @@ export type ScheduleArgs = {
   brief: Brief;
 };
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function schedulePendingMatch(
   args: ScheduleArgs,
 ): Promise<PendingMatch> {
   const scheduledAt = pickRandomMatchTime();
 
-  if (isSupabaseConfigured()) {
+  // Only persist to Supabase when we have a real thread row to FK against.
+  // CLI tests / websocket listener may pass a synthetic threadId.
+  const usePersistence =
+    isSupabaseConfigured() && UUID_RE.test(args.threadId);
+
+  if (usePersistence) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("pending_matches")
@@ -114,34 +122,34 @@ export async function schedulePendingMatch(
 export async function listDuePendingMatches(
   now: Date = new Date(),
 ): Promise<PendingMatch[]> {
-  if (isSupabaseConfigured()) {
-    const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase
-      .from("pending_matches")
-      .select("*")
-      .is("processed_at", null)
-      .lte("scheduled_at", now.toISOString())
-      .order("scheduled_at", { ascending: true });
-    if (error) throw error;
-    return (data ?? []).map(rowToPendingMatch);
-  }
-  return memoryStore.filter(
+  const inMemory = memoryStore.filter(
     (pm) => pm.processedAt === null && pm.scheduledAt <= now,
   );
+  if (!isSupabaseConfigured()) return inMemory;
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("pending_matches")
+    .select("*")
+    .is("processed_at", null)
+    .lte("scheduled_at", now.toISOString())
+    .order("scheduled_at", { ascending: true });
+  if (error) throw error;
+  return [...(data ?? []).map(rowToPendingMatch), ...inMemory];
 }
 
 export async function listAllPending(): Promise<PendingMatch[]> {
-  if (isSupabaseConfigured()) {
-    const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase
-      .from("pending_matches")
-      .select("*")
-      .is("processed_at", null)
-      .order("scheduled_at", { ascending: true });
-    if (error) throw error;
-    return (data ?? []).map(rowToPendingMatch);
-  }
-  return memoryStore.filter((pm) => pm.processedAt === null);
+  const inMemory = memoryStore.filter((pm) => pm.processedAt === null);
+  if (!isSupabaseConfigured()) return inMemory;
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("pending_matches")
+    .select("*")
+    .is("processed_at", null)
+    .order("scheduled_at", { ascending: true });
+  if (error) throw error;
+  return [...(data ?? []).map(rowToPendingMatch), ...inMemory];
 }
 
 export async function markPendingProcessed(args: {
