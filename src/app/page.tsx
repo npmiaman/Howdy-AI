@@ -1,21 +1,21 @@
-import Image from "next/image";
-import Link from "next/link";
 import { Star } from "lucide-react";
 
-import { ContactButton } from "@/components/contact-button";
 import { ContactDialog } from "@/components/contact-dialog";
 import { Differentiation } from "@/components/differentiation";
 import { FAQ } from "@/components/faq";
 import { FinalCTA } from "@/components/final-cta";
 import { HireButton } from "@/components/hire-button";
 import { HireDialog } from "@/components/hire-dialog";
+import { HowdyChatWidget } from "@/components/howdy-chat-widget";
 import { HowItWorks } from "@/components/how-it-works";
 import { MatchPreview } from "@/components/match-preview";
+import { SiteFooter } from "@/components/site-footer";
+import { SiteHeader } from "@/components/site-header";
 
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col">
-      <SiteHeader />
+      <SiteHeader variant="company" />
       <main className="flex-1">
         <section className="mx-auto w-full max-w-7xl px-4 pt-20 pb-2 sm:px-6 md:pt-24 md:pb-4 lg:pt-36 lg:pb-8">
           <Hero />
@@ -32,37 +32,8 @@ export default function Home() {
       <SiteFooter />
       <HireDialog />
       <ContactDialog />
+      <HowdyChatWidget />
     </div>
-  );
-}
-
-function SiteHeader() {
-  return (
-    <header className="fixed inset-x-0 top-0 z-50">
-      <nav className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 sm:px-8 md:px-12 md:py-6 lg:px-16">
-        <Link
-          href="/"
-          className="flex items-center gap-2 text-lg font-medium tracking-tight md:text-2xl"
-        >
-          <Image
-            src="/howdy-logo.png"
-            alt=""
-            width={48}
-            height={48}
-            className="size-8 shrink-0 invert mix-blend-screen md:size-11"
-          />
-          Howdy
-        </Link>
-        <div className="flex items-center gap-2 md:gap-3">
-          <ContactButton className="h-9 rounded-full border border-white/15 bg-transparent px-4 text-sm font-medium text-white/80 backdrop-blur-sm hover:border-white/30 hover:bg-white/10 hover:text-white md:h-12 md:px-6 md:text-base">
-            Contact
-          </ContactButton>
-          <HireButton className="h-9 rounded-full border border-white/20 bg-white/10 px-4 text-sm font-medium text-white shadow-[0_8px_32px_rgba(0,0,0,0.25)] backdrop-blur-sm hover:border-white/30 hover:bg-white/20 hover:text-white md:h-12 md:px-7 md:text-base">
-            Hire Talent
-          </HireButton>
-        </div>
-      </nav>
-    </header>
   );
 }
 
@@ -129,27 +100,5 @@ function StatStrip() {
         </span>
       </span>
     </div>
-  );
-}
-
-function SiteFooter() {
-  return (
-    <footer>
-      <div className="mx-auto flex w-full max-w-7xl items-center px-4 py-6 sm:px-8 md:px-12 md:py-10 lg:px-16">
-        <Link
-          href="/"
-          className="flex items-center gap-3 text-3xl font-medium tracking-tight md:gap-4 md:text-5xl lg:text-6xl"
-        >
-          <Image
-            src="/howdy-logo.png"
-            alt=""
-            width={96}
-            height={96}
-            className="size-10 shrink-0 invert mix-blend-screen md:size-16 lg:size-20"
-          />
-          Howdy
-        </Link>
-      </div>
-    </footer>
   );
 }
