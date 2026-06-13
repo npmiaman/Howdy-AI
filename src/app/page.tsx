@@ -39,7 +39,10 @@ export default function Home() {
 
 function HeroCard() {
   return (
-    <div className="relative overflow-hidden rounded-[28px] md:rounded-[36px]">
+    <div
+      className="relative transform-gpu overflow-hidden rounded-[28px] [-webkit-mask-image:-webkit-radial-gradient(white,black)] md:rounded-[36px]"
+      style={{ isolation: "isolate" }}
+    >
       <Image
         src="/bg.jpg"
         alt=""
