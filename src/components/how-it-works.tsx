@@ -4,6 +4,37 @@ import { useEffect, useRef, useState } from "react";
 
 import { EmailThread, type EmailMessage } from "@/components/email-thread";
 
+const HAT_ASCII = `
+            ,,uod8B8bou,,.
+        ,uod8BBBBBBBBBBBBBBBBRPFT?l!:.
+     ,=m8BBBBBBBBBBBBBBBRPFT?!||||||||||
+    !...:!TVBBBERPFT||||||||||!^""'  ||||
+    !.......:!?|||||||!^""'          ||||
+    !.........||||                   ||||
+    !.........||||  ##               ||||
+    !.........||||                   ||||
+    !.........||||                   ||||
+    \`.........||||                 ,||||
+     .;.......||||              _.-!!|||
+,uodWBBBBb....||||      _.-!!|||||||||!:'
+!YBBBBBBBBBBBBb..!!||:..-!!|||||||!iof68BBBBb...
+!..YBBBBBBBBBBBBb!!||||||||!iof68BBBBBBRPFT?!::
+!....YBBBBBBBBBBBBbaaitf68BBBBBBRPFT?!::::;:
+!......YBBBBBBBBBBBBBBBBBRPFT?!::::;:!^"\`;::
+!........YBBBBBBBBRPFT?!::::::::^"'..::::::;
+ \`..........YBRPFT?!:::::::::::::::::;iof68bo.
+   \`..........:::::::::::::::;iof688888888888b.
+     \`........:::::::::;iof68888888888888888888b.
+       \`......:::;iof6888888888888888888888888888b.
+         \`....:!88888888888888888888888888888899fT!
+           \`..:!9888888888888888888888888899fT|!^"'
+             \`' !!98888888888888888888899fT|!^"'
+                 \`!!8888888888888888899fT|!^"'
+                   \`!988888888899fT|!^"'
+                     \`!9899fT|!^"'
+                       \`!^"'
+`;
+
 const SUBJECT = "Hey Howdy help me find an editor for our launch film";
 
 const MESSAGES: EmailMessage[] = [
@@ -145,9 +176,15 @@ export function HowItWorks() {
   return (
     <>
       {/* mobile + tablet: stacked cards (4) — alternate left/right at md+ */}
-      <section className="mx-auto w-full max-w-5xl px-4 py-16 sm:px-6 md:py-24 lg:hidden">
+      <section className="relative mx-auto w-full max-w-5xl px-4 py-16 sm:px-6 md:py-24 lg:hidden">
+        <pre
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-1/2 -z-10 -translate-x-1/2 -translate-y-1/2 select-none font-mono text-[5px] leading-[6px] text-zinc-400/80"
+        >
+          {HAT_ASCII}
+        </pre>
         <div className="mb-10 text-center md:mb-14">
-          <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-white/50 md:text-xs">
+          <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500 md:text-xs">
             How it works
           </p>
           <h2 className="text-balance text-2xl leading-tight tracking-tight md:text-4xl">
@@ -169,9 +206,15 @@ export function HowItWorks() {
         style={{ height: `${STEPS.length * 100}vh` }}
       >
         <div className="sticky top-0 flex h-screen items-center">
+          <pre
+            aria-hidden
+            className="pointer-events-none absolute left-[28%] top-[72%] -z-10 -translate-x-1/2 -translate-y-1/2 select-none font-mono text-[7px] leading-[8px] text-zinc-400/80 xl:text-[8px] xl:leading-[9px]"
+          >
+            {HAT_ASCII}
+          </pre>
           <div className="mx-auto grid w-full max-w-5xl grid-cols-2 items-center gap-10 px-6">
             <div className="flex flex-col">
-              <p className="mb-4 text-xs font-medium uppercase tracking-[0.18em] text-white/50">
+              <p className="mb-4 text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">
                 How it works
               </p>
               <h2 className="mb-12 text-balance text-4xl leading-tight tracking-tight lg:text-5xl">
@@ -186,7 +229,7 @@ export function HowItWorks() {
                       key={s.title}
                       className={`rounded-lg px-4 py-2.5 transition-colors duration-500 ${
                         active
-                          ? "border border-white/15 bg-white/10"
+                          ? "border border-zinc-200 bg-zinc-100"
                           : "border border-transparent"
                       }`}
                     >
@@ -232,13 +275,13 @@ function StepCard({
       }`}
     >
       <div className="flex w-full flex-col gap-3 md:w-1/2 md:gap-4">
-        <span className="text-xs font-medium uppercase tracking-[0.2em] text-white/40 md:text-sm">
+        <span className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-400 md:text-sm">
           Step 0{index + 1}
         </span>
         <h3 className="text-balance text-2xl leading-tight tracking-tight md:text-3xl">
           {step.title}
         </h3>
-        <p className="text-base text-white/70 md:text-lg">{step.description}</p>
+        <p className="text-base text-zinc-600 md:text-lg">{step.description}</p>
       </div>
       <div className="flex w-full justify-center md:w-1/2">
         <EmailThread

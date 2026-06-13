@@ -1,6 +1,6 @@
 import { EmailThread, type EmailMessage } from "@/components/email-thread";
 
-const SUBJECT = "Hey Howdy help me find an iOS dev for our V1 app";
+const SUBJECT = "Hey Howdy help me find a brand designer for our rebrand";
 
 const MESSAGES: EmailMessage[] = [
   {
@@ -12,11 +12,12 @@ const MESSAGES: EmailMessage[] = [
     avatarSrc: "/zhang-avatar.jpg",
     time: "Wed 9:14 AM",
     snippet:
-      "Need an iOS dev to ship our V1 app. Swift + SwiftUI, 6-week sprint.",
+      "Rebranding before launch. Full identity: logo, type, deck. 3-week sprint.",
     body: (
       <p>
-        Hey Howdy, need an iOS dev to ship our V1 app for launch. Swift +
-        SwiftUI, 6-week sprint, animations heavy.
+        Hey Howdy, we&apos;re rebranding before our public launch and need a
+        brand designer — logo, type system, and launch deck. Three-week
+        sprint, motion chops a big plus.
       </p>
     ),
   },
@@ -29,11 +30,11 @@ const MESSAGES: EmailMessage[] = [
     avatarSrc: "/howdy-logo.png",
     avatarBlend: true,
     time: "Wed 9:18 AM",
-    snippet: "Match: Aria Singh, ex-Apple, $50/hr, starts Monday.",
+    snippet: "Match: Aria Singh, 8 yrs brand identity, $50/hr, starts Monday.",
     body: (
       <p>
-        Got your match. <strong>Aria Singh</strong>, 8 yrs Swift, ex-Apple.
-        $50/hr. Starts Monday. GitHub below.
+        Got your match. <strong>Aria Singh</strong>, 8 yrs brand identity,
+        30+ launches. $50/hr. Starts Monday. Portfolio below.
       </p>
     ),
   },

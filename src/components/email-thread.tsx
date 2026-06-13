@@ -1,13 +1,23 @@
+"use client";
+
 import Image from "next/image";
+import { useState } from "react";
 import {
   Archive,
   ArrowLeft,
+  CheckCheck,
   Forward,
   Mail,
+  Mic,
   MoreVertical,
+  Phone,
+  Plus,
   Reply,
+  Search,
+  Smile,
   Star,
   Trash2,
+  Video,
   X,
 } from "lucide-react";
 
@@ -40,16 +50,33 @@ export function EmailThread({
   messages: EmailMessage[];
   currentStep: number;
 }) {
+  const [tab, setTab] = useState<"gmail" | "whatsapp">("gmail");
   const safeStep = Math.max(0, Math.min(messages.length - 1, currentStep));
   const visible = messages.slice(0, safeStep + 1);
   const collapsed = visible.slice(0, -1);
   const expanded = visible[visible.length - 1];
   const isLastStep = safeStep === messages.length - 1;
 
+  // Map email progress onto the WhatsApp thread so the scroll-step
+  // animation drives both tabs (e.g. 4 email steps -> 6 chat bubbles).
+  const waVisible = Math.max(
+    1,
+    Math.ceil(((safeStep + 1) / messages.length) * WA_MESSAGES.length),
+  );
+
+  if (tab === "whatsapp") {
+    return (
+      <div className="mx-auto w-full max-w-2xl overflow-hidden rounded-xl bg-white font-[system-ui,sans-serif] text-[#202124] shadow-2xl ring-1 ring-black/10">
+        <BrowserChrome active="whatsapp" onSelect={setTab} />
+        <WhatsAppPanel visibleCount={waVisible} />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto w-full max-w-2xl overflow-hidden rounded-xl bg-white font-[system-ui,sans-serif] text-[#202124] shadow-2xl ring-1 ring-black/10">
       {/* macOS browser chrome */}
-      <BrowserChrome />
+      <BrowserChrome active="gmail" onSelect={setTab} />
 
       {/* Toolbar */}
       <div className="flex items-center justify-between border-b border-neutral-200 px-2 py-1 md:px-3 md:py-1.5">
@@ -116,7 +143,13 @@ export function EmailThread({
   );
 }
 
-export function BrowserChrome() {
+export function BrowserChrome({
+  active = "gmail",
+  onSelect,
+}: {
+  active?: "gmail" | "whatsapp";
+  onSelect?: (tab: "gmail" | "whatsapp") => void;
+}) {
   return (
     <div className="flex items-end gap-2 bg-[#e8e8e8] px-2 pt-2 md:gap-3 md:px-3 md:pt-3">
       <div className="flex items-center gap-1 pb-1.5 md:gap-1.5 md:pb-2.5">
@@ -124,20 +157,66 @@ export function BrowserChrome() {
         <span className="size-2.5 rounded-full bg-[#FEBC2E] md:size-3" />
         <span className="size-2.5 rounded-full bg-[#28C840] md:size-3" />
       </div>
-      <div className="flex h-7 items-center gap-1.5 rounded-t-md bg-white pl-2 pr-1.5 text-[11px] font-medium text-neutral-700 md:h-9 md:gap-2 md:pl-3 md:pr-2 md:text-[13px]">
-        <Image
-          src="/gmail-icon.png"
-          alt="Gmail"
-          width={20}
-          height={20}
-          className="size-4 shrink-0 md:size-5"
-        />
-        <span>Gmail</span>
-        <span className="ml-0.5 flex size-3.5 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-700 md:ml-1 md:size-4">
-          <X className="size-2.5 md:size-3" strokeWidth={2.25} />
-        </span>
-      </div>
+      <BrowserTab
+        label="Gmail"
+        isActive={active === "gmail"}
+        onClick={() => onSelect?.("gmail")}
+        icon={
+          <Image
+            src="/gmail-icon.png"
+            alt="Gmail"
+            width={20}
+            height={20}
+            className="size-4 shrink-0 md:size-5"
+          />
+        }
+      />
+      <BrowserTab
+        label="WhatsApp"
+        isActive={active === "whatsapp"}
+        onClick={() => onSelect?.("whatsapp")}
+        icon={<WhatsAppGlyph />}
+      />
     </div>
+  );
+}
+
+function BrowserTab({
+  label,
+  icon,
+  isActive,
+  onClick,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  isActive: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`-ml-1 flex h-7 cursor-pointer items-center gap-1.5 rounded-t-md pl-2 pr-1.5 text-[11px] font-medium md:-ml-2 md:h-9 md:gap-2 md:pl-3 md:pr-2 md:text-[13px] ${
+        isActive
+          ? "bg-white text-neutral-700"
+          : "bg-transparent text-neutral-500 hover:bg-white/50"
+      }`}
+    >
+      {icon}
+      <span>{label}</span>
+      <span className="ml-0.5 flex size-3.5 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-700 md:ml-1 md:size-4">
+        <X className="size-2.5 md:size-3" strokeWidth={2.25} />
+      </span>
+    </button>
+  );
+}
+
+// Simple green chat-bubble glyph standing in for the WhatsApp icon.
+function WhatsAppGlyph() {
+  return (
+    <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-[#25D366] md:size-5">
+      <Phone className="size-2 fill-white text-white md:size-2.5" />
+    </span>
   );
 }
 
@@ -314,3 +393,164 @@ const attachmentStyles: Record<
   audio: { bg: "bg-[#4285F4]", label: "MP3" },
   figma: { bg: "bg-[#A142F4]", label: "FIG" },
 };
+
+/* ---------------------------------------------------------------------------
+ * WhatsApp tab — same scenario energy as the email thread, different brief.
+ * ------------------------------------------------------------------------- */
+
+type WaMessage = {
+  direction: "incoming" | "outgoing";
+  text: React.ReactNode;
+  time: string;
+};
+
+const WA_MESSAGES: WaMessage[] = [
+  {
+    direction: "outgoing",
+    text: "Howdy! Need a video editor for our fashion drop film. 45s, 10 days 🎬",
+    time: "11:02",
+  },
+  {
+    direction: "incoming",
+    text: "On it 🤝 Reference + budget?",
+    time: "11:04",
+  },
+  {
+    direction: "outgoing",
+    text: "A24-teaser vibe. ~$1.5k.",
+    time: "11:07",
+  },
+  {
+    direction: "incoming",
+    text: (
+      <>
+        Match: <strong>Leo Tan</strong> — 7 yrs, music-led cuts. $40/hr,
+        free Thursday. Reel: leotan.work
+      </>
+    ),
+    time: "11:31",
+  },
+];
+
+// Faint doodle pattern for the chat backdrop.
+const WA_PATTERN =
+  `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cg fill='none' stroke='%23000' stroke-opacity='0.045' stroke-width='1.2'%3E%3Ccircle cx='18' cy='22' r='5'/%3E%3Cpath d='M86 14l8 8m0-8l-8 8'/%3E%3Ccircle cx='62' cy='58' r='3'/%3E%3Cpath d='M22 84c4-6 12-6 16 0'/%3E%3Cpath d='M96 92l6 6m0-6l-6 6'/%3E%3Ccircle cx='44' cy='108' r='4'/%3E%3C/g%3E%3C/svg%3E")`;
+
+function WhatsAppPanel({ visibleCount }: { visibleCount: number }) {
+  const visible = WA_MESSAGES.slice(0, visibleCount);
+  return (
+    <div className="flex flex-col">
+      {/* Chat header */}
+      <div className="flex items-center justify-between border-b border-black/5 bg-[#f0f2f5] px-3 py-1.5 md:px-4 md:py-2">
+        <div className="flex items-center gap-2.5 md:gap-3">
+          <div className="flex size-8 items-center justify-center overflow-hidden rounded-full bg-black ring-1 ring-black/10 md:size-9">
+            <Image
+              src="/howdy-logo.png"
+              alt=""
+              width={40}
+              height={40}
+              className="size-full scale-125 object-cover invert mix-blend-screen"
+            />
+          </div>
+          <div className="leading-tight">
+            <div className="text-[12px] font-semibold text-[#111b21] md:text-[14px]">
+              Howdy
+            </div>
+            <div className="text-[10px] leading-tight text-[#667781] md:text-[11px]">
+              online
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 text-[#54656f] md:gap-5">
+          <Video className="size-4 md:size-[18px]" strokeWidth={1.75} />
+          <Phone className="size-3.5 md:size-4" strokeWidth={1.75} />
+          <Search className="size-3.5 md:size-4" strokeWidth={1.75} />
+          <MoreVertical className="size-4 md:size-[18px]" strokeWidth={1.75} />
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div
+        className="space-y-1 bg-[#efeae2] px-4 pb-4 pt-3 md:space-y-1.5 md:px-9 md:pb-5 md:pt-4"
+        style={{ backgroundImage: WA_PATTERN }}
+      >
+        <div className="flex justify-center pb-2">
+          <span className="rounded-lg bg-white px-2.5 py-1 text-[9px] font-medium uppercase tracking-wide text-[#54656f] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] md:text-[10px]">
+            Today
+          </span>
+        </div>
+        {visible.map((m, i) => (
+          <WaBubble
+            key={i}
+            message={m}
+            isLatest={i === visible.length - 1}
+            showTail={i === 0 || WA_MESSAGES[i - 1].direction !== m.direction}
+          />
+        ))}
+      </div>
+
+      {/* Composer */}
+      <div className="flex items-center gap-2.5 border-t border-black/5 bg-[#f0f2f5] px-3 py-2 text-[#54656f] md:gap-4 md:px-4 md:py-2.5">
+        <Plus className="size-4.5 md:size-6" strokeWidth={1.5} />
+        <div className="flex flex-1 items-center gap-2 rounded-full bg-white px-3 py-1.5 md:px-4 md:py-2">
+          <Smile className="size-4 shrink-0 text-[#8696a0] md:size-5" strokeWidth={1.75} />
+          <span className="text-[11px] text-[#8696a0] md:text-[13px]">
+            Type a message
+          </span>
+        </div>
+        <Mic className="size-4 md:size-5" strokeWidth={1.75} />
+      </div>
+    </div>
+  );
+}
+
+function WaBubble({
+  message,
+  isLatest,
+  showTail,
+}: {
+  message: WaMessage;
+  isLatest: boolean;
+  showTail: boolean;
+}) {
+  const isOut = message.direction === "outgoing";
+  return (
+    <div
+      className={`flex ${isOut ? "justify-end" : "justify-start"} ${
+        isLatest
+          ? `animate-in fade-in duration-500 ${
+              isOut ? "slide-in-from-right-6" : "slide-in-from-left-6"
+            }`
+          : ""
+      }`}
+    >
+      <div
+        className={`relative max-w-[80%] rounded-lg px-2.5 pb-1 pt-1.5 text-[11px] leading-[1.35] text-[#111b21] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] md:max-w-[68%] md:px-3 md:pb-1.5 md:pt-2 md:text-[13px] ${
+          isOut ? "bg-[#d9fdd3]" : "bg-white"
+        } ${showTail ? (isOut ? "rounded-tr-none" : "rounded-tl-none") : ""}`}
+      >
+        {/* bubble tail */}
+        {showTail && (
+          <svg
+            viewBox="0 0 8 13"
+            className={`absolute top-0 h-[13px] w-2 ${
+              isOut
+                ? "-right-2 text-[#d9fdd3]"
+                : "-left-2 scale-x-[-1] text-white"
+            }`}
+            aria-hidden
+          >
+            <path d="M0 0 L8 0 L0 10 Z" fill="currentColor" />
+          </svg>
+        )}
+        {message.text}
+        <span className="float-right ml-2 mt-2 flex translate-y-0.5 items-center gap-1 text-[8px] leading-none text-[#667781] md:text-[10px]">
+          {message.time}
+          {isOut && (
+            <CheckCheck className="size-3 text-[#53bdeb] md:size-3.5" strokeWidth={2} />
+          )}
+        </span>
+      </div>
+    </div>
+  );
+}

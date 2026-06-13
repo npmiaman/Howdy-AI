@@ -14,7 +14,7 @@ export function SiteFooter() {
             alt=""
             width={96}
             height={96}
-            className="size-10 shrink-0 invert mix-blend-screen md:size-16 lg:size-20"
+            className="size-10 shrink-0 md:size-16 lg:size-20"
           />
           Howdy
         </Link>

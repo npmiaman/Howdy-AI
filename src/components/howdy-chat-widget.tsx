@@ -16,11 +16,11 @@ const FONT_CLASS = "font-[family-name:var(--font-inter)]";
 const OPENING: ChatMessage = {
   role: "assistant",
   content:
-    "Hey, I'm Howdy. Tell me who you're trying to hire and I'll start digging.",
+    "Hey, I'm Howdy. Tell me what you're making and the creative you need — I'll start digging.",
 };
 
 export function HowdyChatWidget() {
-  const [view, setView] = useState<View>("card");
+  const [view, setView] = useState<View>("minimized");
   const [messages, setMessages] = useState<ChatMessage[]>([OPENING]);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
