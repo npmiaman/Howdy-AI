@@ -12,7 +12,7 @@ const INVITE_MAILTO =
 export const metadata: Metadata = {
   title: "Howdy: For Freelancers — An Invite-Only Roster",
   description:
-    "Howdy's freelancer roster is invite-only. We hand-pick a small network of designers, developers, editors, and specialists, then send the right briefs straight to their inbox.",
+    "Howdy's creative roster is invite-only. We hand-pick a small network of designers, video editors, motion artists, illustrators, and writers, then send the right briefs straight to their inbox.",
 };
 
 export default function FreelancersPage() {
@@ -169,7 +169,7 @@ const STEPS = [
   {
     title: "A short conversation",
     description:
-      "We chat about your taste, your stack, your rates, and the kind of work you want more of. No forms, no take-home tests.",
+      "We chat about your taste, your craft, your rates, and the kind of work you want more of. No forms, no spec work.",
   },
   {
     title: "Briefs arrive in your inbox",
@@ -230,7 +230,7 @@ const DIFF_ROWS = [
   },
   {
     feature: "Fit, not keywords",
-    howdy: "Matched on taste, stack, and rate",
+    howdy: "Matched on taste, craft, and rate",
     others: "Drowned out by lowest bidder",
   },
   {

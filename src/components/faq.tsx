@@ -1,9 +1,11 @@
 import { ChevronDown } from "lucide-react";
 
+import { BLOB_ASCII } from "@/lib/ascii-art";
+
 const FAQS = [
   {
     q: "How fast is the first match really?",
-    a: "Most matches arrive in under an hour. Complex briefs (specific stack, niche style, tight timezone) can take up to 24 hours.",
+    a: "Most matches arrive in under an hour. Complex briefs (niche aesthetic, rare medium, tight timezone) can take up to 24 hours.",
   },
   {
     q: "What if the match isn't right?",
@@ -23,15 +25,21 @@ const FAQS = [
   },
   {
     q: "What roles do you actually cover?",
-    a: "Designers, developers, video editors, motion artists, illustrators, writers, strategists, and most adjacent specialists. If you can describe the role, I can probably find it.",
+    a: "Brand and product designers, video editors, motion artists, illustrators, animators, copywriters, content strategists, and most adjacent creative specialists. If you can describe the role, I can probably find it.",
   },
 ];
 
 export function FAQ() {
   return (
-    <section className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6 md:py-24 lg:py-32">
+    <section className="relative mx-auto w-full max-w-3xl overflow-hidden px-4 py-16 sm:px-6 md:overflow-visible md:py-24 lg:py-32">
+      <pre
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/2 -z-10 -translate-x-1/2 -translate-y-1/2 select-none font-mono text-[7px] leading-[6px] text-zinc-400/70 md:text-[20px] md:leading-[18px]"
+      >
+        {BLOB_ASCII}
+      </pre>
       <div className="mb-8 text-center md:mb-12">
-        <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-white/50 md:mb-4 md:text-xs">
+        <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500 md:mb-4 md:text-xs">
           FAQ
         </p>
         <h2 className="text-balance text-2xl leading-tight tracking-tight md:text-4xl lg:text-5xl">
@@ -56,12 +64,12 @@ function FAQItem({
   answer: string;
 }) {
   return (
-    <details className="group rounded-xl border border-white/15 bg-white/5 px-6 py-4 backdrop-blur-md transition-colors open:bg-white/10">
+    <details className="group rounded-xl border border-zinc-200 bg-zinc-50 px-6 py-4 backdrop-blur-md transition-colors open:bg-zinc-100">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden">
         <span className="text-base font-medium md:text-lg">{question}</span>
-        <ChevronDown className="size-5 shrink-0 text-white/60 transition-transform group-open:rotate-180" />
+        <ChevronDown className="size-5 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
       </summary>
-      <p className="mt-3 text-sm text-white/70 md:text-base">{answer}</p>
+      <p className="mt-3 text-sm text-zinc-600 md:text-base">{answer}</p>
     </details>
   );
 }

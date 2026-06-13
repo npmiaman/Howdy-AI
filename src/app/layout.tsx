@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
-import { Inter, Instrument_Serif, Geist_Mono } from "next/font/google";
+import { Inter, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const instrumentSerif = Instrument_Serif({
-  variable: "--font-sans",
-  subsets: ["latin"],
-  weight: ["400"],
-  style: ["normal", "italic"],
+const ppMondwest = localFont({
+  src: "../../public/PPMondwest-Regular.ttf",
+  variable: "--font-mondwest",
+  display: "swap",
+  weight: "400",
+  style: "normal",
 });
 
 const geistMono = Geist_Mono({
@@ -20,9 +22,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Howdy: Hire Vetted Freelancers, Fast",
+  title: "Howdy: Hire Vetted Creative Freelancers, Fast",
   description:
-    "Need a designer, developer, editor, or specialist? Howdy finds them, vets them, and makes the intro.",
+    "Need a brand designer, video editor, motion artist, or illustrator? Howdy finds them, vets them, and makes the intro.",
 };
 
 export default function RootLayout({
@@ -33,7 +35,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${instrumentSerif.variable} ${geistMono.variable} ${inter.variable} h-full antialiased`}
+      className={`${ppMondwest.variable} ${geistMono.variable} ${inter.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <div
