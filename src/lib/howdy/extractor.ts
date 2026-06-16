@@ -60,6 +60,13 @@ function mergeBriefs(prev: Brief, next: Brief): Brief {
   return merged;
 }
 
+/**
+ * NOTE: this and `briefIsActionable` below are NO LONGER the matching gate.
+ * The live gate is `assessBrief().allResolved` in assessor.ts, which requires
+ * every field to be clear (or explicitly not-applicable) and detects vague
+ * answers. These two are kept only as lightweight, LLM-free readouts for
+ * traces/tests.
+ */
 export function briefCompleteness(brief: Brief): {
   filled: number;
   total: number;
@@ -74,6 +81,10 @@ export function briefCompleteness(brief: Brief): {
     "deadline",
     "must_haves",
     "references",
+    "domain",
+    "experience_level",
+    "red_flags",
+    "collaboration_style",
   ];
   const missing = fields.filter((k) => {
     const v = brief[k];
@@ -91,7 +102,8 @@ export function briefCompleteness(brief: Brief): {
  *   1. role + description (the basic ask)
  *   2. at least one specificity signal (stack / references / must_haves)
  *   3. at least one constraint signal (deadline / budget)
- *   4. five total fields filled (out of eight)
+ *   4. at least one fit signal (domain / experience_level / collaboration_style)
+ *   5. seven total fields filled (out of twelve)
  */
 export function briefIsActionable(brief: Brief): boolean {
   if (!brief.role) return false;
@@ -107,6 +119,14 @@ export function briefIsActionable(brief: Brief): boolean {
     !!brief.deadline || brief.budget_usd_per_hour_max !== null;
   if (!hasConstraints) return false;
 
+  // At least one signal about who the freelancer should be, beyond the task —
+  // this is what makes a match feel deeply understood, not just keyword-correct.
+  const hasFitSignal =
+    !!brief.domain ||
+    !!brief.experience_level ||
+    !!brief.collaboration_style;
+  if (!hasFitSignal) return false;
+
   const filled = [
     !!brief.role,
     !!brief.description && brief.description.trim().length >= 30,
@@ -116,7 +136,11 @@ export function briefIsActionable(brief: Brief): boolean {
     !!brief.deadline,
     brief.budget_usd_per_hour_max !== null,
     !!brief.timezone_preference,
+    !!brief.domain,
+    !!brief.experience_level,
+    (brief.red_flags?.length ?? 0) > 0,
+    !!brief.collaboration_style,
   ].filter(Boolean).length;
 
-  return filled >= 6;
+  return filled >= 7;
 }

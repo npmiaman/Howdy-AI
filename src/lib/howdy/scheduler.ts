@@ -196,6 +196,52 @@ export async function listAllPending(): Promise<PendingMatch[]> {
   return [...(data ?? []).map(rowToPendingMatch), ...inMemory];
 }
 
+/** Load processed requests sitting in any of the given saga phases. */
+export async function listRequestsInPhase(
+  phases: string[],
+): Promise<PendingMatch[]> {
+  if (!isSupabaseConfigured()) return [];
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("pending_matches")
+    .select("*")
+    .in("phase", phases)
+    .not("processed_at", "is", null);
+  if (error) throw error;
+  return (data ?? []).map(rowToPendingMatch);
+}
+
+/** Requests in `connecting` phase whose connect_after delay has elapsed. */
+export async function listDueConnects(
+  now: Date = new Date(),
+): Promise<PendingMatch[]> {
+  if (!isSupabaseConfigured()) return [];
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("pending_matches")
+    .select("*")
+    .eq("phase", "connecting")
+    .lte("connect_after", now.toISOString());
+  if (error) throw error;
+  return (data ?? []).map(rowToPendingMatch);
+}
+
+export async function getPendingById(
+  id: string,
+): Promise<PendingMatch | null> {
+  if (!isSupabaseConfigured()) {
+    return memoryStore.find((p) => p.id === id) ?? null;
+  }
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("pending_matches")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? rowToPendingMatch(data) : null;
+}
+
 export async function markPendingProcessed(args: {
   id: string;
   matchedFreelancerId: string | null;

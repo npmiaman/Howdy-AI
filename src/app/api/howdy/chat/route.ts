@@ -7,11 +7,8 @@ import {
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import {
-  briefCompleteness,
-  briefIsActionable,
-  extractBrief,
-} from "@/lib/howdy/extractor";
+import { assessBrief } from "@/lib/howdy/assessor";
+import { extractBrief } from "@/lib/howdy/extractor";
 import { getChatModel } from "@/lib/howdy/llm";
 import { EMPTY_BRIEF } from "@/lib/howdy/types";
 
@@ -40,10 +37,14 @@ Rules:
   1. Concrete project description (what are they building / why does this work matter?)
   2. Deadline / timeline
   3. Budget (hourly or total — rough is fine)
-  4. Style references or examples of work they admire (the "vibe")
-  5. Specific tools / stack / skill requirements
-  6. Must-haves (e.g. shipped X before, has Y experience)
-  7. Timezone overlap if relevant
+  4. Experience level / seniority they want (junior, mid, senior, or lead)
+  5. Domain or industry the work sits in (e.g. fintech, fashion, gaming)
+  6. Style references or examples of work they admire (the "vibe")
+  7. Red flags — work, styles, or traits they want to avoid (dealbreakers)
+  8. Collaboration style — how they want the freelancer to operate (proactive and self-directed, communicative, takes close direction)
+  9. Specific tools / stack / skill requirements
+  10. Must-haves (e.g. shipped X before, has Y experience)
+  11. Timezone overlap if relevant
 - Ground the question in what the user already said. If they said "Flutter developer", probe deeper into Flutter, don't start from scratch.
 - Sound like a sharp, friendly text from a smart human matchmaker (not a form). Vary phrasing.
 - Keep it under two short sentences. No greetings, no preamble.`;
@@ -86,9 +87,14 @@ export async function POST(request: Request) {
 
   try {
     const brief = await extractBrief(lcMessages, EMPTY_BRIEF, "");
+    const clarifyTurns = lcMessages.filter(
+      (m) => m.getType() !== "human",
+    ).length;
+    const assessment = await assessBrief(lcMessages, brief, "", clarifyTurns);
     const llm = getChatModel();
 
-    if (briefIsActionable(brief)) {
+    // Match only once every field is clear (or not-applicable).
+    if (assessment.allResolved) {
       const reply = await llm.invoke([
         new SystemMessage(DEMO_ACK_PROMPT),
         new HumanMessage(
@@ -102,23 +108,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ reply: text, done: true });
     }
 
-    const { missing, filled, total } = briefCompleteness(brief);
+    // The assessor already wrote the sharp, context-grounded next question
+    // (re-asking sharper when the prior answer was vague). Emit it directly.
+    if (assessment.nextQuestion?.trim()) {
+      return NextResponse.json({
+        reply: assessment.nextQuestion.trim(),
+        done: false,
+      });
+    }
+
+    // Fallback: ask from the raw priority prompt if the assessor returned none.
     const reply = await llm.invoke([
       new SystemMessage(CLARIFY_DEMO_PROMPT),
       new HumanMessage(
         `Conversation so far:
 ${lcMessages
-  .map(
-    (m) => `${m.getType() === "human" ? "Hirer" : "Howdy"}: ${m.content}`,
-  )
+  .map((m) => `${m.getType() === "human" ? "Hirer" : "Howdy"}: ${m.content}`)
   .join("\n")}
 
 Current brief (extracted):
 ${JSON.stringify(brief, null, 2)}
 
-Brief is ${filled}/${total} fields filled. Still missing: ${missing.join(", ") || "none"}.
-
-Pick the single highest-priority unanswered topic and ask one focused question.`,
+Ask the single highest-priority unanswered question.`,
       ),
     ]);
     const text =
