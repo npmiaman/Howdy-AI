@@ -248,3 +248,39 @@ export type RankedMatch = {
   rationale: string;
   confidence: "high" | "medium" | "low";
 };
+
+// ---------------------------------------------------------------------------
+// Post-match experience (see DECISIONS.md 2026-06-16).
+// ---------------------------------------------------------------------------
+export const CHECKIN_DELAY_DAYS = 3; // first "how was the call?" after intro
+export const MAX_DIGIN_TURNS = 3; // dig-in exchanges before we move on
+export const MAX_CHECKIN_ROUND = 2; // initial call + one post-follow-up, then stop
+
+export type CheckinParty = "company" | "freelancer";
+
+export type CheckinStatus =
+  | "scheduled"
+  | "awaiting_reply"
+  | "digging"
+  | "offered_rematch"
+  | "awaiting_followup"
+  | "done";
+
+export type CheckinSentiment = "good" | "bad";
+
+export type PostMatchCheckin = {
+  id: string;
+  requestId: string;
+  candidateId: string | null;
+  party: CheckinParty;
+  round: number;
+  status: CheckinStatus;
+  sentiment: CheckinSentiment | null;
+  feedback: string | null;
+  toEmail: string;
+  checkinThreadId: string | null;
+  checkinMessageId: string | null;
+  turns: number;
+  scheduledAt: Date;
+  sentAt: Date | null;
+};

@@ -6,6 +6,10 @@ import {
   sweepTimeouts,
 } from "@/lib/howdy/outreach";
 import {
+  schedulePostMatchCheckins,
+  sendDueCheckins,
+} from "@/lib/howdy/post-match";
+import {
   listDueConnects,
   listDuePendingMatches,
   listRequestsInPhase,
@@ -82,21 +86,41 @@ export async function GET(request: Request) {
     results.push({ step: "error_sweep", detail });
   }
 
-  // ---- 3. Connect intros whose short delay has elapsed. ----
+  // ---- 3. Connect intros whose short delay has elapsed → then schedule
+  //         the post-match check-ins for that newly-connected match. ----
   for (const request of await listDueConnects()) {
     try {
       const { connected } = await sendDueConnects(request);
-      if (connected > 0)
+      if (connected > 0) {
         results.push({
           step: "sent_connects",
           id: request.id,
           detail: `${connected} intro(s)`,
         });
+        const { scheduled } = await schedulePostMatchCheckins(request);
+        if (scheduled > 0)
+          results.push({
+            step: "scheduled_checkins",
+            id: request.id,
+            detail: `${scheduled} check-in(s)`,
+          });
+      }
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       console.error(`[process-pending] sendDueConnects ${request.id}:`, detail);
       results.push({ step: "error_connect", id: request.id, detail });
     }
+  }
+
+  // ---- 4. Post-match check-ins whose 3-day delay has elapsed. ----
+  try {
+    const { sent } = await sendDueCheckins();
+    if (sent > 0)
+      results.push({ step: "sent_checkins", detail: `${sent} sent` });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("[process-pending] sendDueCheckins:", detail);
+    results.push({ step: "error_checkins", detail });
   }
 
   return NextResponse.json({ ok: true, steps: results.length, results });

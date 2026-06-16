@@ -20,6 +20,10 @@ import {
   parseClientSelection,
 } from "@/lib/howdy/outreach";
 import {
+  findCheckinByThread,
+  handleCheckinReply,
+} from "@/lib/howdy/post-match";
+import {
   getPendingById,
   lastSentMatchForThread,
   listRequestsInPhase,
@@ -128,6 +132,23 @@ export async function POST(request: Request) {
           shortlistReady: result.shortlistReady,
         });
       }
+    }
+
+    // ----------------------------------------------------------------------
+    // ROUTE 1b — is this a reply to a post-match CHECK-IN ("how was the call?")
+    // from either the company or the freelancer?
+    // ----------------------------------------------------------------------
+    const checkin = await findCheckinByThread(email.threadId);
+    if (checkin) {
+      const result = await handleCheckinReply({
+        checkin,
+        text: email.body,
+      });
+      return NextResponse.json({
+        ok: true,
+        action: "checkin_reply",
+        stage: result.stage,
+      });
     }
 
     // ----------------------------------------------------------------------

@@ -10,11 +10,9 @@
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
-import {
-  replyToMessage,
-  sendFreshEmail,
-} from "@/lib/agentmail/client";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
+
+import { dispatch } from "./mailer";
 
 import {
   countByStatus,
@@ -47,41 +45,6 @@ import {
 } from "./types";
 
 const CONNECT_DELAY_MIN = Number(process.env.HOWDY_CONNECT_DELAY_MIN ?? 5);
-
-export function isDryRun(): boolean {
-  // Default ON — outreach only sends real email when explicitly set to "false".
-  return process.env.HOWDY_OUTREACH_DRYRUN !== "false";
-}
-
-type SendResult = { messageId: string; threadId: string };
-
-/**
- * Single choke point for all outbound email in the saga. In dry-run it logs
- * and returns synthetic ids so the rest of the saga (correlation, persistence)
- * behaves identically to live.
- */
-async function dispatch(args: {
-  kind: string; // for logs: "freelancer_invite", "client_shortlist", etc.
-  to: string;
-  subject: string;
-  text: string;
-  replyToMessageId?: string | null;
-  cc?: string[];
-}): Promise<SendResult> {
-  if (isDryRun()) {
-    const id = `dry_${Math.random().toString(36).slice(2, 10)}`;
-    console.log(
-      `[outreach:DRYRUN] ${args.kind} → ${args.to}${args.cc?.length ? ` (cc ${args.cc.join(", ")})` : ""}\n  subject: ${args.subject}\n  ${args.text.replace(/\n/g, "\n  ")}`,
-    );
-    return { messageId: `${id}_msg`, threadId: `${id}_thread` };
-  }
-  // Live: CC isn't wired into the thin AgentMail wrapper yet; the connect step
-  // that needs CC will extend the wrapper before going live.
-  if (args.replyToMessageId) {
-    return replyToMessage({ messageId: args.replyToMessageId, text: args.text });
-  }
-  return sendFreshEmail({ to: args.to, subject: args.subject, text: args.text });
-}
 
 /** How many candidates are still in play toward the shortlist of 3. */
 function liveCount(candidates: MatchCandidate[]): {
@@ -117,6 +80,57 @@ export async function startOutreach(request: PendingMatch): Promise<{
     invited += 1;
   }
   return { invited, poolSize: ranked.length };
+}
+
+/**
+ * Rematch: re-run outreach for a request, excluding everyone already tried
+ * (plus an explicitly disliked freelancer) and feeding the negative feedback
+ * into ranking. Used by the post-match flow when a party asks for someone else.
+ */
+export async function restartOutreach(
+  request: PendingMatch,
+  opts: { excludeFreelancerIds: string[]; reason: string },
+): Promise<{ invited: number }> {
+  const existing = await listCandidates(request.id);
+  const exclude = new Set<string>([
+    ...opts.excludeFreelancerIds,
+    ...existing.map((c) => c.freelancerId), // never re-invite anyone already tried
+  ]);
+  const rankOffset =
+    existing.reduce((m, c) => Math.max(m, c.rank), -1) + 1;
+
+  // Feed the "why it didn't work" into the brief so ranking + pitch steer clear.
+  const augmentedBrief: Brief = {
+    ...request.brief,
+    red_flags: Array.from(
+      new Set([...(request.brief.red_flags ?? []), opts.reason]),
+    ),
+  };
+
+  const ranked = (await rankMatches(augmentedBrief)).filter(
+    (r) => !exclude.has(r.freelancer.id),
+  );
+  if (ranked.length === 0) return { invited: 0 };
+
+  await seedCandidates({
+    requestId: request.id,
+    threadId: request.threadId,
+    ranked: ranked.map((r, i) => ({ ...r, rank: rankOffset + i })),
+  });
+  await setRequestPhase(request.id, "outreach");
+
+  const fresh = (await listCandidates(request.id))
+    .filter((c) => c.status === "queued" && c.rank >= rankOffset)
+    .sort((a, b) => a.rank - b.rank);
+  const freelancers = await freelancerMap(fresh);
+  let invited = 0;
+  for (const cand of fresh.slice(0, INITIAL_INVITES)) {
+    const f = freelancers.get(cand.freelancerId);
+    if (!f) continue;
+    await inviteCandidate(cand, f, augmentedBrief);
+    invited += 1;
+  }
+  return { invited };
 }
 
 async function inviteCandidate(
