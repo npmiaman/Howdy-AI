@@ -1,18 +1,17 @@
 import { NextResponse } from "next/server";
 
 import {
-  isAgentMailConfigured,
-  replyToMessage,
-  sendFreshEmail,
-} from "@/lib/agentmail/client";
-import { runScheduledMatch } from "@/lib/howdy/agent";
-import { saveMemories } from "@/lib/howdy/memories";
+  sendDueConnects,
+  startOutreach,
+  sweepTimeouts,
+} from "@/lib/howdy/outreach";
 import {
+  listDueConnects,
   listDuePendingMatches,
+  listRequestsInPhase,
   markPendingProcessed,
 } from "@/lib/howdy/scheduler";
-import { appendMessage } from "@/lib/howdy/threads";
-import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
+import type { PendingMatch } from "@/lib/howdy/scheduler";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -43,98 +42,62 @@ export async function GET(request: Request) {
     );
   }
 
+  const results: Array<{ step: string; id?: string; detail?: string }> = [];
+
+  // ---- 1. New requests whose deferred time is due → start outreach. ----
   const due = await listDuePendingMatches();
-  const results: Array<{
-    id: string;
-    action: "matched" | "no_match" | "error";
-    detail?: string;
-  }> = [];
-
-  for (const pending of due) {
+  for (const request of due) {
     try {
-      const { match, reply } = await runScheduledMatch(pending.brief);
-
-      let replyMessageId: string | null = null;
-
-      // Send via AgentMail (when configured + Supabase has the thread row).
-      if (isAgentMailConfigured() && isSupabaseConfigured()) {
-        const sb = getSupabaseAdmin();
-
-        // Find the most recent inbound message id on this thread to reply to.
-        const { data: lastInbound } = await sb
-          .from("messages")
-          .select("gmail_message_id")
-          .eq("thread_id", pending.threadId)
-          .eq("role", "human")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        const inboundMessageId = lastInbound?.gmail_message_id;
-        try {
-          const sent = inboundMessageId
-            ? await replyToMessage({
-                messageId: inboundMessageId,
-                text: reply,
-              })
-            : await sendFreshEmail({
-                to: pending.userEmail,
-                subject: pending.subject ?? "Your match",
-                text: reply,
-              });
-          replyMessageId = sent.messageId;
-        } catch (sendErr) {
-          console.error("[process-pending] agentmail send failed:", sendErr);
-        }
-      }
-
-      // Persist the AI reply on the thread.
-      if (isSupabaseConfigured()) {
-        await appendMessage({
-          threadId: pending.threadId,
-          role: "ai",
-          content: reply,
-          gmailMessageId: replyMessageId ?? undefined,
-        });
-      }
-
+      const { invited, poolSize } = await startOutreach(request);
+      // Mark processed so we don't re-start outreach; `phase` drives the rest.
       await markPendingProcessed({
-        id: pending.id,
-        matchedFreelancerId: match?.freelancer.id ?? null,
+        id: request.id,
+        matchedFreelancerId: null,
         replyMessageId: null,
       });
-
-      // Save long-term memory facts so the next conversation can pick up where
-      // this one ended (without re-asking everything).
-      if (match) {
-        const facts = [
-          `Previously hired role: ${pending.brief.role}.`,
-          ...(pending.brief.references?.length
-            ? [`Style references they like: ${pending.brief.references.join(", ")}.`]
-            : []),
-          ...(pending.brief.budget_usd_per_hour_max
-            ? [`Typical budget: ~$${pending.brief.budget_usd_per_hour_max}/hr.`]
-            : []),
-          `Last match: ${match.freelancer.name} (${match.freelancer.role}).`,
-        ];
-        await saveMemories({ userEmail: pending.userEmail, facts });
-      }
-
       results.push({
-        id: pending.id,
-        action: match ? "matched" : "no_match",
-        detail: match?.freelancer.name,
+        step: "started_outreach",
+        id: request.id,
+        detail: `invited ${invited} of ${poolSize} ranked`,
       });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      console.error(`[process-pending] failed for ${pending.id}:`, detail);
-      results.push({ id: pending.id, action: "error", detail });
+      console.error(`[process-pending] startOutreach ${request.id}:`, detail);
+      results.push({ step: "error_start", id: request.id, detail });
     }
   }
 
-  return NextResponse.json({
-    ok: true,
-    processed: results.length,
-    results,
-  });
+  // ---- 2. Timeout sweep: invited freelancers past 24h → pass to next-ranked. ----
+  try {
+    const outreaching = await listRequestsInPhase(["outreach"]);
+    const byId = new Map<string, PendingMatch>(
+      outreaching.map((r) => [r.id, r]),
+    );
+    const { timedOut } = await sweepTimeouts(byId);
+    if (timedOut > 0)
+      results.push({ step: "swept_timeouts", detail: `${timedOut} timed out` });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("[process-pending] sweepTimeouts:", detail);
+    results.push({ step: "error_sweep", detail });
+  }
+
+  // ---- 3. Connect intros whose short delay has elapsed. ----
+  for (const request of await listDueConnects()) {
+    try {
+      const { connected } = await sendDueConnects(request);
+      if (connected > 0)
+        results.push({
+          step: "sent_connects",
+          id: request.id,
+          detail: `${connected} intro(s)`,
+        });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(`[process-pending] sendDueConnects ${request.id}:`, detail);
+      results.push({ step: "error_connect", id: request.id, detail });
+    }
+  }
+
+  return NextResponse.json({ ok: true, steps: results.length, results });
 }

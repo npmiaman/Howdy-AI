@@ -7,8 +7,23 @@ import {
   replyToMessage,
 } from "@/lib/agentmail/client";
 import { runHowdyTurn } from "@/lib/howdy/agent";
+import {
+  findCandidateByOutreachThread,
+  listCandidates,
+} from "@/lib/howdy/candidates";
+import { getFreelancersByIds } from "@/lib/howdy/data";
 import { loadMemories } from "@/lib/howdy/memories";
-import { lastSentMatchForThread } from "@/lib/howdy/scheduler";
+import {
+  classifyFreelancerReply,
+  handleClientSelection,
+  handleFreelancerDecision,
+  parseClientSelection,
+} from "@/lib/howdy/outreach";
+import {
+  getPendingById,
+  lastSentMatchForThread,
+  listRequestsInPhase,
+} from "@/lib/howdy/scheduler";
 import {
   appendMessage,
   findOrCreateThread,
@@ -16,7 +31,7 @@ import {
   markThreadProcessed,
   saveBrief,
 } from "@/lib/howdy/threads";
-import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -85,6 +100,86 @@ export async function POST(request: Request) {
   }
 
   try {
+    // ----------------------------------------------------------------------
+    // ROUTE 1 — is this a FREELANCER replying to an outreach check-in?
+    // Matched by the outreach thread we emailed them on. Their replies never
+    // touch the client conversation.
+    // ----------------------------------------------------------------------
+    const candidate = await findCandidateByOutreachThread(email.threadId);
+    if (candidate) {
+      const request = await getPendingById(candidate.requestId);
+      if (request) {
+        const decision = await classifyFreelancerReply(email.body);
+        if (decision === "unclear") {
+          await replyToMessage({
+            messageId: email.messageId,
+            text: "Just to confirm — are you open to this one? A quick yes or no works.",
+          });
+          return NextResponse.json({ ok: true, action: "freelancer_unclear" });
+        }
+        const result = await handleFreelancerDecision({
+          candidate,
+          accepted: decision === "yes",
+          request,
+        });
+        return NextResponse.json({
+          ok: true,
+          action: `freelancer_${result.outcome}`,
+          shortlistReady: result.shortlistReady,
+        });
+      }
+    }
+
+    // ----------------------------------------------------------------------
+    // ROUTE 2 — is this a CLIENT picking from a shortlist we sent them?
+    // ----------------------------------------------------------------------
+    if (isSupabaseConfigured()) {
+      const sb = getSupabaseAdmin();
+      const { data: threadRow } = await sb
+        .from("threads")
+        .select("id")
+        .eq("gmail_thread_id", email.threadId)
+        .maybeSingle();
+      if (threadRow?.id) {
+        const shortlisted = await listRequestsInPhase(["shortlist_sent"]);
+        const req = shortlisted.find((r) => r.threadId === threadRow.id);
+        if (req) {
+          const cands = await listCandidates(req.id);
+          const fmap = new Map(
+            (
+              await getFreelancersByIds(cands.map((c) => c.freelancerId))
+            ).map((f) => [f.id, f]),
+          );
+          const chosen = await parseClientSelection({
+            text: email.body,
+            candidates: cands,
+            freelancers: fmap,
+          });
+          if (chosen.length > 0) {
+            const result = await handleClientSelection({
+              request: req,
+              chosenFreelancerIds: chosen,
+            });
+            await replyToMessage({
+              messageId: email.messageId,
+              text:
+                result.chosen === 1
+                  ? "Perfect — connecting you now. Intro landing in your inbox in a couple minutes."
+                  : `Great picks — connecting you with all ${result.chosen}. Intros landing in your inbox shortly.`,
+            });
+            return NextResponse.json({
+              ok: true,
+              action: "client_selected",
+              chosen: result.chosen,
+            });
+          }
+        }
+      }
+    }
+
+    // ----------------------------------------------------------------------
+    // ROUTE 3 — default: client brief conversation.
+    // ----------------------------------------------------------------------
     const thread = await findOrCreateThread({
       gmailThreadId: email.threadId, // reusing same column for any provider's thread id
       userEmail: email.fromEmail,

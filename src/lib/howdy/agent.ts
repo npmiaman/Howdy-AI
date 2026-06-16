@@ -6,11 +6,8 @@ import {
 } from "@langchain/core/messages";
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 
-import {
-  briefCompleteness,
-  briefIsActionable,
-  extractBrief,
-} from "./extractor";
+import { assessBrief } from "./assessor";
+import { extractBrief } from "./extractor";
 import { getChatModel } from "./llm";
 import { findBestMatch } from "./matcher";
 import { memoriesAsContext } from "./memories";
@@ -18,7 +15,12 @@ import {
   type PendingMatch,
   schedulePendingMatch,
 } from "./scheduler";
-import { type Brief, EMPTY_BRIEF, type MatchResult } from "./types";
+import {
+  type Brief,
+  type BriefAssessment,
+  EMPTY_BRIEF,
+  type MatchResult,
+} from "./types";
 
 const HowdyState = Annotation.Root({
   messages: Annotation<BaseMessage[]>({
@@ -54,19 +56,34 @@ const HowdyState = Annotation.Root({
     reducer: (_curr, next) => next,
     default: () => false,
   }),
+  /** Per-field clarity audit produced after each extraction. */
+  assessment: Annotation<BriefAssessment | null>({
+    reducer: (_curr, next) => next,
+    default: () => null,
+  }),
 });
 
 type HowdyStateType = typeof HowdyState.State;
 
+/** Count of Howdy's own replies so far — a proxy for how many clarifying
+ *  turns have happened, used to backstop the question loop. */
+function clarifyTurnCount(state: HowdyStateType): number {
+  return state.messages.filter((m) => m.getType() !== "human").length;
+}
+
 async function extractNode(
   state: HowdyStateType,
 ): Promise<Partial<HowdyStateType>> {
-  const updated = await extractBrief(
+  const memoryContext = memoriesAsContext(state.memories);
+  const updated = await extractBrief(state.messages, state.brief, memoryContext);
+  // Audit clarity of every field, then decide if we can match or must ask more.
+  const assessment = await assessBrief(
     state.messages,
-    state.brief,
-    memoriesAsContext(state.memories),
+    updated,
+    memoryContext,
+    clarifyTurnCount(state),
   );
-  return { brief: updated };
+  return { brief: updated, assessment };
 }
 
 const CLARIFY_SYSTEM_PROMPT = `You are Howdy, an AI freelancer-matching agent.
@@ -80,10 +97,14 @@ Rules:
   1. Concrete project description (what are they building / why does this work matter?)
   2. Deadline / timeline
   3. Budget (hourly or total — rough is fine)
-  4. Style references or examples of work they admire (the "vibe")
-  5. Specific tools / stack / skill requirements
-  6. Must-haves (e.g. shipped X before, has Y experience)
-  7. Timezone overlap if relevant
+  4. Experience level / seniority they want (junior, mid, senior, or lead)
+  5. Domain or industry the work sits in (e.g. fintech, fashion, gaming)
+  6. Style references or examples of work they admire (the "vibe")
+  7. Red flags — work, styles, or traits they want to avoid (dealbreakers)
+  8. Collaboration style — how they want the freelancer to operate (proactive and self-directed, communicative, takes close direction)
+  9. Specific tools / stack / skill requirements
+  10. Must-haves (e.g. shipped X before, has Y experience)
+  11. Timezone overlap if relevant
 - Ground the question in what the user already said. If they said "Flutter developer", the next question should reference Flutter and probe deeper, not start from scratch.
 - The question should feel like a sharp, friendly text from a smart human matchmaker (not a form). Vary phrasing — don't sound formulaic across turns.
 - Keep it under two sentences. No greetings, no preamble. Just the question.`;
@@ -91,7 +112,16 @@ Rules:
 async function clarifyNode(
   state: HowdyStateType,
 ): Promise<Partial<HowdyStateType>> {
-  const { missing, filled, total } = briefCompleteness(state.brief);
+  // The assessor already chose the highest-priority unresolved field and wrote
+  // a sharp, context-grounded question for it (re-asking sharper when the prior
+  // answer was vague). Emit that directly.
+  const question = state.assessment?.nextQuestion?.trim();
+  if (question) {
+    return { messages: [new AIMessage(question)] };
+  }
+
+  // Fallback: assessment produced no question (shouldn't happen on the clarify
+  // route). Ask a focused question from the raw priority prompt.
   const memoryBlock = memoriesAsContext(state.memories);
   const llm = getChatModel();
   const reply = await llm.invoke([
@@ -105,9 +135,7 @@ ${state.messages
 Current brief (extracted):
 ${JSON.stringify(state.brief, null, 2)}
 
-Brief is ${filled}/${total} fields filled. Still missing: ${missing.join(", ") || "none"}.
-
-Pick the single highest-priority unanswered topic from your priority list and ask one focused question. Don't repeat anything you've already asked about, and don't ask anything that's already in the memory context.`,
+Ask the single highest-priority unanswered question. Don't repeat anything you've already asked, and don't ask anything that's in the memory context.`,
     ),
   ]);
   const text =
@@ -163,7 +191,9 @@ function decideRoute(
   // Once a match has been delivered on this thread, every subsequent reply
   // is a follow-up — never re-trigger the matcher.
   if (state.hasPreviousMatch) return "followUp";
-  return briefIsActionable(state.brief) ? "schedule" : "clarify";
+  // Match only once EVERY field is clear (or explicitly not-applicable);
+  // otherwise keep clarifying.
+  return state.assessment?.allResolved ? "schedule" : "clarify";
 }
 
 const FOLLOW_UP_SYSTEM_PROMPT = `You are Howdy, an AI freelancer-matching agent. The hirer is replying to a thread where you've ALREADY sent them a match.

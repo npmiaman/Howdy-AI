@@ -190,11 +190,13 @@ export async function sendFreshEmail(args: {
   to: string;
   subject: string;
   text: string;
+  cc?: string[];
 }): Promise<{ messageId: string; threadId: string }> {
   const am = getClient();
   const inboxId = await getInboxId();
   const result = await am.inboxes.messages.send(inboxId, {
     to: [args.to],
+    ...(args.cc && args.cc.length ? { cc: args.cc } : {}),
     subject: args.subject,
     text: args.text,
   });
