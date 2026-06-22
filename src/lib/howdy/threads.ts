@@ -52,8 +52,46 @@ export async function findOrCreateThread(args: {
     })
     .select()
     .single();
-  if (insErr) throw insErr;
+  if (insErr) {
+    // Concurrent first-turn requests can race to create the same thread. The
+    // loser hits a unique-violation (23505) — re-select the winner's row
+    // instead of failing, so neither visitor's message is lost.
+    if ((insErr as { code?: string }).code === "23505") {
+      const { data: raced } = await supabase
+        .from("threads")
+        .select("*")
+        .eq("gmail_thread_id", args.gmailThreadId)
+        .maybeSingle();
+      if (raced) return raced as ThreadRow;
+    }
+    throw insErr;
+  }
   return created as ThreadRow;
+}
+
+/**
+ * Append a message unless the thread's most recent message is byte-identical
+ * (same role + content) — which means this is a duplicate from a client retry.
+ * Returns true if a row was written, false if it was a deduped no-op.
+ */
+export async function appendMessageDeduped(args: {
+  threadId: string;
+  role: "human" | "ai";
+  content: string;
+}): Promise<boolean> {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase
+    .from("messages")
+    .select("role, content")
+    .eq("thread_id", args.threadId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const last = data?.[0] as { role: string; content: string } | undefined;
+  if (last && last.role === args.role && last.content === args.content) {
+    return false;
+  }
+  await appendMessage(args);
+  return true;
 }
 
 export async function loadMessages(threadId: string): Promise<BaseMessage[]> {
