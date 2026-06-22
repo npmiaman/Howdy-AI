@@ -10,7 +10,13 @@ import { z } from "zod";
 import { assessBrief } from "@/lib/howdy/assessor";
 import { extractBrief } from "@/lib/howdy/extractor";
 import { getChatModel } from "@/lib/howdy/llm";
-import { EMPTY_BRIEF } from "@/lib/howdy/types";
+import {
+  appendMessage,
+  findOrCreateThread,
+  saveBrief,
+} from "@/lib/howdy/threads";
+import { EMPTY_BRIEF, type Brief } from "@/lib/howdy/types";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -25,7 +31,47 @@ const ChatRequestSchema = z.object({
     )
     .min(1)
     .max(40),
+  // Stable per-visitor id from the widget, so every turn lands on one thread.
+  sessionId: z.string().min(1).max(100).optional(),
 });
+
+/**
+ * Persist a website-chat turn so it shows up alongside email conversations.
+ * Keyed by the widget's sessionId; appends only the newest visitor message and
+ * this turn's reply (earlier turns were saved on their own requests).
+ */
+async function cacheChatTurn(args: {
+  sessionId: string | undefined;
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  reply: string;
+  brief: Brief;
+}): Promise<void> {
+  if (!args.sessionId || !isSupabaseConfigured()) return;
+  try {
+    const lastUser = [...args.messages]
+      .reverse()
+      .find((m) => m.role === "user");
+    const thread = await findOrCreateThread({
+      gmailThreadId: `web:${args.sessionId}`,
+      userEmail: `web-${args.sessionId.slice(0, 12)}@howdy.chat`,
+      subject:
+        args.messages.find((m) => m.role === "user")?.content.slice(0, 80) ??
+        "Website chat",
+    });
+    if (lastUser) {
+      await appendMessage({
+        threadId: thread.id,
+        role: "human",
+        content: lastUser.content,
+      });
+    }
+    await appendMessage({ threadId: thread.id, role: "ai", content: args.reply });
+    await saveBrief(thread.id, args.brief);
+  } catch (e) {
+    // Caching must never break the chat experience.
+    console.warn("[howdy/chat] cache failed:", e);
+  }
+}
 
 const CLARIFY_DEMO_PROMPT = `You are Howdy, an AI freelancer-matching agent, talking to a visitor who is trying you out on the website.
 
@@ -93,6 +139,9 @@ export async function POST(request: Request) {
     const assessment = await assessBrief(lcMessages, brief, "", clarifyTurns);
     const llm = getChatModel();
 
+    let text: string;
+    let done: boolean;
+
     // Match only once every field is clear (or not-applicable).
     if (assessment.allResolved) {
       const reply = await llm.invoke([
@@ -101,27 +150,22 @@ export async function POST(request: Request) {
           `Brief:\n${JSON.stringify(brief, null, 2)}\n\nWrite the demo ack.`,
         ),
       ]);
-      const text =
+      text =
         typeof reply.content === "string"
           ? reply.content.trim()
           : JSON.stringify(reply.content);
-      return NextResponse.json({ reply: text, done: true });
-    }
-
-    // The assessor already wrote the sharp, context-grounded next question
-    // (re-asking sharper when the prior answer was vague). Emit it directly.
-    if (assessment.nextQuestion?.trim()) {
-      return NextResponse.json({
-        reply: assessment.nextQuestion.trim(),
-        done: false,
-      });
-    }
-
-    // Fallback: ask from the raw priority prompt if the assessor returned none.
-    const reply = await llm.invoke([
-      new SystemMessage(CLARIFY_DEMO_PROMPT),
-      new HumanMessage(
-        `Conversation so far:
+      done = true;
+    } else if (assessment.nextQuestion?.trim()) {
+      // The assessor already wrote the sharp, context-grounded next question
+      // (re-asking sharper when the prior answer was vague).
+      text = assessment.nextQuestion.trim();
+      done = false;
+    } else {
+      // Fallback: ask from the raw priority prompt if the assessor returned none.
+      const reply = await llm.invoke([
+        new SystemMessage(CLARIFY_DEMO_PROMPT),
+        new HumanMessage(
+          `Conversation so far:
 ${lcMessages
   .map((m) => `${m.getType() === "human" ? "Hirer" : "Howdy"}: ${m.content}`)
   .join("\n")}
@@ -130,13 +174,25 @@ Current brief (extracted):
 ${JSON.stringify(brief, null, 2)}
 
 Ask the single highest-priority unanswered question.`,
-      ),
-    ]);
-    const text =
-      typeof reply.content === "string"
-        ? reply.content.trim()
-        : JSON.stringify(reply.content);
-    return NextResponse.json({ reply: text, done: false });
+        ),
+      ]);
+      text =
+        typeof reply.content === "string"
+          ? reply.content.trim()
+          : JSON.stringify(reply.content);
+      done = false;
+    }
+
+    // Cache this turn (visitor message + reply) so it shows up in the
+    // conversations view alongside email threads.
+    await cacheChatTurn({
+      sessionId: parsed.data.sessionId,
+      messages: parsed.data.messages,
+      reply: text,
+      brief,
+    });
+
+    return NextResponse.json({ reply: text, done });
   } catch (err) {
     console.error("[howdy/chat] error", err);
     return NextResponse.json(
