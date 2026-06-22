@@ -35,6 +35,13 @@ const ChatRequestSchema = z.object({
   sessionId: z.string().min(1).max(100).optional(),
 });
 
+// Small deterministic hash → stable fallback session key when none is sent.
+function simpleHash(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
 /**
  * Persist a website-chat turn so it shows up alongside email conversations.
  * Keyed by the widget's sessionId; appends only the newest visitor message and
@@ -46,14 +53,20 @@ async function cacheChatTurn(args: {
   reply: string;
   brief: Brief;
 }): Promise<void> {
-  if (!args.sessionId || !isSupabaseConfigured()) return;
+  if (!isSupabaseConfigured()) return;
+  // Always cache: if the widget didn't send a session id, derive a stable one
+  // from the conversation's opening message so retries still map to one thread.
+  const firstUser =
+    args.messages.find((m) => m.role === "user")?.content ?? "anon";
+  const sessionKey =
+    args.sessionId ?? `auto-${simpleHash(firstUser)}`;
   try {
     const lastUser = [...args.messages]
       .reverse()
       .find((m) => m.role === "user");
     const thread = await findOrCreateThread({
-      gmailThreadId: `web:${args.sessionId}`,
-      userEmail: `web-${args.sessionId.slice(0, 12)}@howdy.chat`,
+      gmailThreadId: `web:${sessionKey}`,
+      userEmail: `web-${sessionKey.slice(0, 12)}@howdy.chat`,
       subject:
         args.messages.find((m) => m.role === "user")?.content.slice(0, 80) ??
         "Website chat",

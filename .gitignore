@@ -43,3 +43,6 @@ next-env.d.ts
 # Local debug artifacts
 .playwright-mcp/
 howdy-*.png
+
+# Local DB backups (contain PII — never commit)
+/backups/
