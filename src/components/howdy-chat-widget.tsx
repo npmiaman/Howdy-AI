@@ -13,6 +13,21 @@ type View = "card" | "minimized" | "open";
 
 const FONT_CLASS = "font-[family-name:var(--font-inter)]";
 
+// Stable per-visitor id so every chat turn is cached onto one thread.
+function getSessionId(): string {
+  if (typeof window === "undefined") return "ssr";
+  const KEY = "howdy_chat_session";
+  let id = window.localStorage.getItem(KEY);
+  if (!id) {
+    id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `s_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    window.localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+
 const OPENING: ChatMessage = {
   role: "assistant",
   content:
@@ -63,6 +78,7 @@ export function HowdyChatWidget() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: next.map(({ role, content }) => ({ role, content })),
+          sessionId: getSessionId(),
         }),
       });
       if (!res.ok) {
