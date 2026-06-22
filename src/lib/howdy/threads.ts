@@ -6,6 +6,7 @@ import {
 
 import { getSupabaseAdmin } from "@/lib/supabase/client";
 
+import { mirrorBrief, mirrorMessage, mirrorThread } from "./mirror";
 import { type Brief, EMPTY_BRIEF } from "./types";
 
 export type ThreadRow = {
@@ -40,7 +41,11 @@ export async function findOrCreateThread(args: {
     .eq("gmail_thread_id", args.gmailThreadId)
     .maybeSingle();
   if (selErr) throw selErr;
-  if (existing) return existing as ThreadRow;
+  if (existing) {
+    // Mirror on access too, so pre-existing threads get backfilled.
+    await mirrorThread(existing as ThreadRow);
+    return existing as ThreadRow;
+  }
 
   const { data: created, error: insErr } = await supabase
     .from("threads")
@@ -62,10 +67,14 @@ export async function findOrCreateThread(args: {
         .select("*")
         .eq("gmail_thread_id", args.gmailThreadId)
         .maybeSingle();
-      if (raced) return raced as ThreadRow;
+      if (raced) {
+        await mirrorThread(raced as ThreadRow);
+        return raced as ThreadRow;
+      }
     }
     throw insErr;
   }
+  await mirrorThread(created as ThreadRow);
   return created as ThreadRow;
 }
 
@@ -114,13 +123,27 @@ export async function appendMessage(args: {
   gmailMessageId?: string;
 }): Promise<void> {
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("messages").insert({
-    thread_id: args.threadId,
-    role: args.role,
-    content: args.content,
-    gmail_message_id: args.gmailMessageId ?? null,
-  });
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({
+      thread_id: args.threadId,
+      role: args.role,
+      content: args.content,
+      gmail_message_id: args.gmailMessageId ?? null,
+    })
+    .select("*")
+    .single();
   if (error) throw error;
+  // Mirror to our own DB with the SAME id so the two stores line up 1:1.
+  const row = data as MessageRow;
+  await mirrorMessage({
+    id: row.id,
+    thread_id: row.thread_id,
+    role: row.role,
+    content: row.content,
+    gmail_message_id: row.gmail_message_id,
+    created_at: row.created_at,
+  });
 }
 
 export async function saveBrief(threadId: string, brief: Brief): Promise<void> {
@@ -130,6 +153,7 @@ export async function saveBrief(threadId: string, brief: Brief): Promise<void> {
     .update({ brief, updated_at: new Date().toISOString() })
     .eq("id", threadId);
   if (error) throw error;
+  await mirrorBrief(threadId, brief);
 }
 
 export async function markThreadProcessed(threadId: string): Promise<void> {
