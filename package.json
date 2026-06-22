@@ -14,7 +14,8 @@
     "seed:supabase": "tsx scripts/seed-supabase.ts",
     "agentmail:inboxes": "tsx scripts/agentmail-inboxes.ts",
     "howdy:listen": "tsx scripts/howdy-listen.ts",
-    "backup:db": "node scripts/db-backup.cjs"
+    "backup:db": "node scripts/db-backup.cjs",
+    "mirror:backfill": "node scripts/mirror-backfill.cjs"
   },
   "dependencies": {
     "@langchain/core": "^1.1.44",
@@ -28,6 +29,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^1.14.0",
     "next": "16.2.4",
+    "pg": "^8.22.0",
     "radix-ui": "^1.4.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -40,6 +42,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "dotenv": "^17.4.2",
