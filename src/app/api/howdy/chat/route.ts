@@ -11,7 +11,7 @@ import { assessBrief } from "@/lib/howdy/assessor";
 import { extractBrief } from "@/lib/howdy/extractor";
 import { getChatModel } from "@/lib/howdy/llm";
 import {
-  appendMessage,
+  appendMessageDeduped,
   findOrCreateThread,
   saveBrief,
 } from "@/lib/howdy/threads";
@@ -21,19 +21,45 @@ import { isSupabaseConfigured } from "@/lib/supabase/client";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
+const MAX_CONTENT = 8000;
+
 const ChatRequestSchema = z.object({
   messages: z
     .array(
       z.object({
         role: z.enum(["user", "assistant"]),
-        content: z.string().min(1).max(4000),
+        // Be forgiving: clamp over-long content instead of rejecting the whole
+        // request, so an oversized message is still captured (never dropped).
+        content: z
+          .string()
+          .min(1)
+          .transform((s) => s.slice(0, MAX_CONTENT)),
       }),
     )
     .min(1)
-    .max(40),
+    .max(60),
   // Stable per-visitor id from the widget, so every turn lands on one thread.
   sessionId: z.string().min(1).max(100).optional(),
 });
+
+// Retry a DB op a few times with backoff — absorbs transient Supabase blips.
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  label: string,
+  attempts = 3,
+): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 150 * (i + 1)));
+    }
+  }
+  console.error(`[howdy/chat] ${label} failed after ${attempts} attempts`, lastErr);
+  throw lastErr;
+}
 
 // Small deterministic hash → stable fallback session key when none is sent.
 function simpleHash(s: string): string {
@@ -42,47 +68,85 @@ function simpleHash(s: string): string {
   return h.toString(36);
 }
 
+function sessionKeyFor(
+  sessionId: string | undefined,
+  messages: Array<{ role: "user" | "assistant"; content: string }>,
+): string {
+  // Always have a stable key: fall back to a hash of the opening message so a
+  // missing sessionId still maps every retry to the same thread.
+  const firstUser = messages.find((m) => m.role === "user")?.content ?? "anon";
+  return sessionId ?? `auto-${simpleHash(firstUser)}`;
+}
+
 /**
- * Persist a website-chat turn so it shows up alongside email conversations.
- * Keyed by the widget's sessionId; appends only the newest visitor message and
- * this turn's reply (earlier turns were saved on their own requests).
+ * Capture the visitor's newest message FIRST — before any LLM work — so the
+ * message is preserved even if the agent later errors, times out, or rate-
+ * limits. Returns the thread id (for the reply) or null if caching is off.
+ * On unrecoverable DB failure it logs the full message so it can be replayed
+ * from logs rather than silently vanishing.
  */
-async function cacheChatTurn(args: {
-  sessionId: string | undefined;
-  messages: Array<{ role: "user" | "assistant"; content: string }>;
-  reply: string;
-  brief: Brief;
-}): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  // Always cache: if the widget didn't send a session id, derive a stable one
-  // from the conversation's opening message so retries still map to one thread.
-  const firstUser =
-    args.messages.find((m) => m.role === "user")?.content ?? "anon";
-  const sessionKey =
-    args.sessionId ?? `auto-${simpleHash(firstUser)}`;
-  try {
-    const lastUser = [...args.messages]
-      .reverse()
-      .find((m) => m.role === "user");
-    const thread = await findOrCreateThread({
-      gmailThreadId: `web:${sessionKey}`,
-      userEmail: `web-${sessionKey.slice(0, 12)}@howdy.chat`,
-      subject:
-        args.messages.find((m) => m.role === "user")?.content.slice(0, 80) ??
-        "Website chat",
+async function cacheInbound(
+  sessionKey: string,
+  messages: Array<{ role: "user" | "assistant"; content: string }>,
+): Promise<string | null> {
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  if (!isSupabaseConfigured()) {
+    console.error("[howdy/chat] Supabase not configured — message NOT cached", {
+      sessionKey,
+      content: lastUser?.content,
     });
+    return null;
+  }
+  try {
+    const thread = await withRetry(
+      () =>
+        findOrCreateThread({
+          gmailThreadId: `web:${sessionKey}`,
+          userEmail: `web-${sessionKey.slice(0, 12)}@howdy.chat`,
+          subject:
+            messages.find((m) => m.role === "user")?.content.slice(0, 80) ??
+            "Website chat",
+        }),
+      "findOrCreateThread",
+    );
     if (lastUser) {
-      await appendMessage({
-        threadId: thread.id,
-        role: "human",
-        content: lastUser.content,
-      });
+      await withRetry(
+        () =>
+          appendMessageDeduped({
+            threadId: thread.id,
+            role: "human",
+            content: lastUser.content,
+          }),
+        "appendInbound",
+      );
     }
-    await appendMessage({ threadId: thread.id, role: "ai", content: args.reply });
-    await saveBrief(thread.id, args.brief);
+    return thread.id;
   } catch (e) {
-    // Caching must never break the chat experience.
-    console.warn("[howdy/chat] cache failed:", e);
+    // Last resort: the message is in the logs even if the DB write failed.
+    console.error("[howdy/chat] INBOUND LOST — could not persist visitor message", {
+      sessionKey,
+      content: lastUser?.content,
+      error: e instanceof Error ? e.message : e,
+    });
+    return null;
+  }
+}
+
+/** Persist this turn's reply + brief. Best-effort with retry; never throws. */
+async function cacheReply(
+  threadId: string | null,
+  reply: string,
+  brief: Brief,
+): Promise<void> {
+  if (!threadId) return;
+  try {
+    await withRetry(
+      () => appendMessageDeduped({ threadId, role: "ai", content: reply }),
+      "appendReply",
+    );
+    await withRetry(() => saveBrief(threadId, brief), "saveBrief");
+  } catch {
+    /* already logged in withRetry; reply caching is non-critical */
   }
 }
 
@@ -118,13 +182,6 @@ In the live product, you'd schedule a real match for later today. For this demo,
 - No greetings or signoffs.`;
 
 export async function POST(request: Request) {
-  if (!process.env.GOOGLE_API_KEY) {
-    return NextResponse.json(
-      { error: "Howdy is offline (missing GOOGLE_API_KEY)." },
-      { status: 503 },
-    );
-  }
-
   let body: unknown;
   try {
     body = await request.json();
@@ -140,20 +197,33 @@ export async function POST(request: Request) {
     );
   }
 
+  // Capture the message up front — even before checking the LLM is online, so a
+  // misconfigured/offline agent never costs us the visitor's message.
+  const sessionKey = sessionKeyFor(parsed.data.sessionId, parsed.data.messages);
+  const threadId = await cacheInbound(sessionKey, parsed.data.messages);
+
+  if (!process.env.GOOGLE_API_KEY) {
+    return NextResponse.json(
+      { error: "Howdy is offline (missing GOOGLE_API_KEY)." },
+      { status: 503 },
+    );
+  }
+
   const lcMessages: BaseMessage[] = parsed.data.messages.map((m) =>
     m.role === "user" ? new HumanMessage(m.content) : new AIMessage(m.content),
   );
 
+  // Run the agent. A failure here must not lose the message cached above.
+  let text: string;
+  let done: boolean;
+  let brief: Brief = EMPTY_BRIEF;
   try {
-    const brief = await extractBrief(lcMessages, EMPTY_BRIEF, "");
+    brief = await extractBrief(lcMessages, EMPTY_BRIEF, "");
     const clarifyTurns = lcMessages.filter(
       (m) => m.getType() !== "human",
     ).length;
     const assessment = await assessBrief(lcMessages, brief, "", clarifyTurns);
     const llm = getChatModel();
-
-    let text: string;
-    let done: boolean;
 
     // Match only once every field is clear (or not-applicable).
     if (assessment.allResolved) {
@@ -195,22 +265,27 @@ Ask the single highest-priority unanswered question.`,
           : JSON.stringify(reply.content);
       done = false;
     }
-
-    // Cache this turn (visitor message + reply) so it shows up in the
-    // conversations view alongside email threads.
-    await cacheChatTurn({
-      sessionId: parsed.data.sessionId,
-      messages: parsed.data.messages,
-      reply: text,
-      brief,
-    });
-
-    return NextResponse.json({ reply: text, done });
   } catch (err) {
-    console.error("[howdy/chat] error", err);
+    // The agent failed, but the visitor's message is already cached (step 1).
+    // Return a graceful reply instead of a hard error so the chat keeps going.
+    console.error("[howdy/chat] agent error (message already cached)", err);
+    await cacheReply(
+      threadId,
+      "[agent error — visitor message preserved]",
+      brief,
+    );
     return NextResponse.json(
-      { error: "Howdy hit a snag. Try again in a sec." },
-      { status: 500 },
+      {
+        reply:
+          "Sorry — I hit a snag on my end. Your message is saved; mind sending that again?",
+        done: false,
+      },
+      { status: 200 },
     );
   }
+
+  // STEP 3 — persist this turn's reply + brief (best-effort, retried).
+  await cacheReply(threadId, text, brief);
+
+  return NextResponse.json({ reply: text, done });
 }
