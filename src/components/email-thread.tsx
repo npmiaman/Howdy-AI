@@ -414,9 +414,9 @@ function toWaItems(messages: EmailMessage[]): WaItem[] {
   return items;
 }
 
-// Faint doodle pattern for the chat backdrop.
+// Faint doodle pattern for the chat backdrop — subtle curves only (no O / X).
 const WA_PATTERN =
-  `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cg fill='none' stroke='%23000' stroke-opacity='0.045' stroke-width='1.2'%3E%3Ccircle cx='18' cy='22' r='5'/%3E%3Cpath d='M86 14l8 8m0-8l-8 8'/%3E%3Ccircle cx='62' cy='58' r='3'/%3E%3Cpath d='M22 84c4-6 12-6 16 0'/%3E%3Cpath d='M96 92l6 6m0-6l-6 6'/%3E%3Ccircle cx='44' cy='108' r='4'/%3E%3C/g%3E%3C/svg%3E")`;
+  `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cg fill='none' stroke='%23000' stroke-opacity='0.045' stroke-width='1.2'%3E%3Cpath d='M18 26c4-6 12-6 16 0'/%3E%3Cpath d='M82 18c4-6 12-6 16 0'/%3E%3Cpath d='M50 64c4-6 12-6 16 0'/%3E%3Cpath d='M24 104c4-6 12-6 16 0'/%3E%3Cpath d='M92 96c4-6 12-6 16 0'/%3E%3C/g%3E%3C/svg%3E")`;
 
 function WhatsAppPanel({ messages }: { messages: EmailMessage[] }) {
   const items = toWaItems(messages);
