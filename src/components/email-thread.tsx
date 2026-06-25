@@ -550,18 +550,16 @@ function WaBubble({
       }`}
     >
       <div
-        className={`relative max-w-[80%] rounded-lg p-1 text-[11px] leading-[1.35] text-[#111b21] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] md:max-w-[68%] md:text-[13px] ${
-          isOut ? "bg-[#d9fdd3]" : "bg-white"
-        } ${showTail ? (isOut ? "rounded-tr-none" : "rounded-tl-none") : ""}`}
+        className={`relative max-w-[80%] rounded-lg bg-[#d9fdd3] p-1 text-[11px] leading-[1.35] text-[#111b21] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] md:max-w-[68%] md:text-[13px] ${
+          showTail ? (isOut ? "rounded-tr-none" : "rounded-tl-none") : ""
+        }`}
       >
         {/* bubble tail */}
         {showTail && (
           <svg
             viewBox="0 0 8 13"
-            className={`absolute top-0 h-[13px] w-2 ${
-              isOut
-                ? "-right-2 text-[#d9fdd3]"
-                : "-left-2 scale-x-[-1] text-white"
+            className={`absolute top-0 h-[13px] w-2 text-[#d9fdd3] ${
+              isOut ? "-right-2" : "-left-2 scale-x-[-1]"
             }`}
             aria-hidden
           >
