@@ -414,10 +414,6 @@ function toWaItems(messages: EmailMessage[]): WaItem[] {
   return items;
 }
 
-// Faint doodle pattern for the chat backdrop — subtle curves only (no O / X).
-const WA_PATTERN =
-  `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cg fill='none' stroke='%23000' stroke-opacity='0.045' stroke-width='1.2'%3E%3Cpath d='M18 26c4-6 12-6 16 0'/%3E%3Cpath d='M82 18c4-6 12-6 16 0'/%3E%3Cpath d='M50 64c4-6 12-6 16 0'/%3E%3Cpath d='M24 104c4-6 12-6 16 0'/%3E%3Cpath d='M92 96c4-6 12-6 16 0'/%3E%3C/g%3E%3C/svg%3E")`;
-
 function WhatsAppPanel({ messages }: { messages: EmailMessage[] }) {
   const items = toWaItems(messages);
   return (
@@ -452,10 +448,7 @@ function WhatsAppPanel({ messages }: { messages: EmailMessage[] }) {
       </div>
 
       {/* Messages */}
-      <div
-        className="space-y-1 bg-[#efeae2] px-4 pb-4 pt-3 md:space-y-1.5 md:px-9 md:pb-5 md:pt-4"
-        style={{ backgroundImage: WA_PATTERN }}
-      >
+      <div className="space-y-1 bg-[#efeae2] px-4 pb-4 pt-3 md:space-y-1.5 md:px-9 md:pb-5 md:pt-4">
         <div className="flex justify-center pb-2">
           <span className="rounded-lg bg-white px-2.5 py-1 text-[9px] font-medium uppercase tracking-wide text-[#54656f] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] md:text-[10px]">
             Today
