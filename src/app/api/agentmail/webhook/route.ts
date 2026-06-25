@@ -111,14 +111,27 @@ export async function POST(request: Request) {
     // ----------------------------------------------------------------------
     const candidate = await findCandidateByOutreachThread(email.threadId);
     if (candidate) {
+      // Record the freelancer's inbound reply on the conversation so it shows
+      // up in Momo (and mirrors to the backup DB) — not just our outreach.
+      const inThread = await findOrCreateThread({
+        gmailThreadId: email.threadId,
+        userEmail: email.fromEmail,
+        subject: email.subject,
+      });
+      await appendMessage({
+        threadId: inThread.id,
+        role: "human",
+        content: email.body,
+        gmailMessageId: email.messageId,
+      });
       const request = await getPendingById(candidate.requestId);
       if (request) {
         const decision = await classifyFreelancerReply(email.body);
         if (decision === "unclear") {
-          await replyToMessage({
-            messageId: email.messageId,
-            text: "Just to confirm — are you open to this one? A quick yes or no works.",
-          });
+          const ask =
+            "Just to confirm — are you open to this one? A quick yes or no works.";
+          await replyToMessage({ messageId: email.messageId, text: ask });
+          await appendMessage({ threadId: inThread.id, role: "ai", content: ask });
           return NextResponse.json({ ok: true, action: "freelancer_unclear" });
         }
         const result = await handleFreelancerDecision({
@@ -140,6 +153,17 @@ export async function POST(request: Request) {
     // ----------------------------------------------------------------------
     const checkin = await findCheckinByThread(email.threadId);
     if (checkin) {
+      const inThread = await findOrCreateThread({
+        gmailThreadId: email.threadId,
+        userEmail: email.fromEmail,
+        subject: email.subject,
+      });
+      await appendMessage({
+        threadId: inThread.id,
+        role: "human",
+        content: email.body,
+        gmailMessageId: email.messageId,
+      });
       const result = await handleCheckinReply({
         checkin,
         text: email.body,
@@ -177,16 +201,25 @@ export async function POST(request: Request) {
             freelancers: fmap,
           });
           if (chosen.length > 0) {
+            await appendMessage({
+              threadId: threadRow.id,
+              role: "human",
+              content: email.body,
+              gmailMessageId: email.messageId,
+            });
             const result = await handleClientSelection({
               request: req,
               chosenFreelancerIds: chosen,
             });
-            await replyToMessage({
-              messageId: email.messageId,
-              text:
-                result.chosen === 1
-                  ? "Perfect — connecting you now. Intro landing in your inbox in a couple minutes."
-                  : `Great picks — connecting you with all ${result.chosen}. Intros landing in your inbox shortly.`,
+            const ack =
+              result.chosen === 1
+                ? "Perfect — connecting you now. Intro landing in your inbox in a couple minutes."
+                : `Great picks — connecting you with all ${result.chosen}. Intros landing in your inbox shortly.`;
+            await replyToMessage({ messageId: email.messageId, text: ack });
+            await appendMessage({
+              threadId: threadRow.id,
+              role: "ai",
+              content: ack,
             });
             return NextResponse.json({
               ok: true,
