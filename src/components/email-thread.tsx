@@ -57,18 +57,12 @@ export function EmailThread({
   const expanded = visible[visible.length - 1];
   const isLastStep = safeStep === messages.length - 1;
 
-  // Map email progress onto the WhatsApp thread so the scroll-step
-  // animation drives both tabs (e.g. 4 email steps -> 6 chat bubbles).
-  const waVisible = Math.max(
-    1,
-    Math.ceil(((safeStep + 1) / messages.length) * WA_MESSAGES.length),
-  );
-
   if (tab === "whatsapp") {
     return (
       <div className="mx-auto w-full max-w-2xl overflow-hidden rounded-xl bg-white font-[system-ui,sans-serif] text-[#202124] shadow-2xl ring-1 ring-black/10">
         <BrowserChrome active="whatsapp" onSelect={setTab} />
-        <WhatsAppPanel visibleCount={waVisible} />
+        {/* Same conversation as the Gmail tab, rendered as a chat. */}
+        <WhatsAppPanel messages={visible} />
       </div>
     );
   }
@@ -395,69 +389,37 @@ const attachmentStyles: Record<
 };
 
 /* ---------------------------------------------------------------------------
- * WhatsApp tab — same scenario energy as the email thread, different brief.
+ * WhatsApp tab — the SAME conversation as the Gmail thread, rendered as a chat.
  * ------------------------------------------------------------------------- */
 
-type WaAttachment =
-  | { kind: "document"; name: string; size: string }
-  | { kind: "image"; caption?: string };
-
-type WaMessage = {
+type WaItem = {
   direction: "incoming" | "outgoing";
-  text?: React.ReactNode;
-  attachment?: WaAttachment;
   time: string;
+  text?: React.ReactNode;
+  attachment?: Attachment;
 };
 
-const WA_MESSAGES: WaMessage[] = [
-  {
-    direction: "outgoing",
-    text: "Hey Howdy — need an editor for our launch film 🎬 90-sec hero film for the homepage.",
-    time: "10:14",
-  },
-  {
-    direction: "incoming",
-    text: "On it! Quick Qs — style, deadline, footage, any refs?",
-    time: "10:16",
-  },
-  {
-    direction: "outgoing",
-    text: "Linear/Apple style, 2-week deadline, ~30 min of raw footage. Light motion graphics + original sound.",
-    time: "10:31",
-  },
-  {
-    direction: "outgoing",
-    attachment: { kind: "document", name: "brand-guidelines.pdf", size: "4.2 MB" },
-    time: "10:31",
-  },
-  {
-    direction: "outgoing",
-    attachment: { kind: "image", caption: "Moodboard for the vibe ✨" },
-    time: "10:32",
-  },
-  {
-    direction: "incoming",
-    text: "Perfect — got the guidelines + moodboard. Finding your match now.",
-    time: "10:33",
-  },
-  {
-    direction: "incoming",
-    text: (
-      <>
-        Match: <strong>Leo Tan</strong> — 7 yrs, launch films for Linear-style
-        brands. $40/hr, free Thursday. Reel: leotan.work
-      </>
-    ),
-    time: "10:58",
-  },
-];
+// Flatten the email thread into chat items: a text bubble per message plus one
+// bubble per attachment — so both tabs show the exact same conversation.
+function toWaItems(messages: EmailMessage[]): WaItem[] {
+  const items: WaItem[] = [];
+  for (const m of messages) {
+    if (m.snippet) {
+      items.push({ direction: m.direction, time: m.time, text: m.snippet });
+    }
+    for (const a of m.attachments ?? []) {
+      items.push({ direction: m.direction, time: m.time, attachment: a });
+    }
+  }
+  return items;
+}
 
 // Faint doodle pattern for the chat backdrop.
 const WA_PATTERN =
   `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cg fill='none' stroke='%23000' stroke-opacity='0.045' stroke-width='1.2'%3E%3Ccircle cx='18' cy='22' r='5'/%3E%3Cpath d='M86 14l8 8m0-8l-8 8'/%3E%3Ccircle cx='62' cy='58' r='3'/%3E%3Cpath d='M22 84c4-6 12-6 16 0'/%3E%3Cpath d='M96 92l6 6m0-6l-6 6'/%3E%3Ccircle cx='44' cy='108' r='4'/%3E%3C/g%3E%3C/svg%3E")`;
 
-function WhatsAppPanel({ visibleCount }: { visibleCount: number }) {
-  const visible = WA_MESSAGES.slice(0, visibleCount);
+function WhatsAppPanel({ messages }: { messages: EmailMessage[] }) {
+  const items = toWaItems(messages);
   return (
     <div className="flex flex-col">
       {/* Chat header */}
@@ -499,12 +461,12 @@ function WhatsAppPanel({ visibleCount }: { visibleCount: number }) {
             Today
           </span>
         </div>
-        {visible.map((m, i) => (
+        {items.map((it, i) => (
           <WaBubble
             key={i}
-            message={m}
-            isLatest={i === visible.length - 1}
-            showTail={i === 0 || WA_MESSAGES[i - 1].direction !== m.direction}
+            item={it}
+            isLatest={i === items.length - 1}
+            showTail={i === 0 || items[i - 1].direction !== it.direction}
           />
         ))}
       </div>
@@ -525,16 +487,16 @@ function WhatsAppPanel({ visibleCount }: { visibleCount: number }) {
 }
 
 function WaBubble({
-  message,
+  item,
   isLatest,
   showTail,
 }: {
-  message: WaMessage;
+  item: WaItem;
   isLatest: boolean;
   showTail: boolean;
 }) {
-  const isOut = message.direction === "outgoing";
-  const att = message.attachment;
+  const isOut = item.direction === "outgoing";
+  const att = item.attachment;
   return (
     <div
       className={`flex ${isOut ? "justify-end" : "justify-start"} ${
@@ -565,18 +527,17 @@ function WaBubble({
           </svg>
         )}
 
-        {att?.kind === "document" && <WaDocCard name={att.name} size={att.size} />}
-        {att?.kind === "image" && <WaMoodboard />}
+        {att &&
+          (att.kind === "image" ? (
+            <WaImage name={att.name} />
+          ) : (
+            <WaDocCard file={att} />
+          ))}
 
-        {message.text && (
-          <div className="px-1.5 pt-1">{message.text}</div>
-        )}
-        {att?.kind === "image" && att.caption && (
-          <div className="px-1.5 pt-1">{att.caption}</div>
-        )}
+        {item.text && <div className="px-1.5 pt-1">{item.text}</div>}
 
         <div className="flex items-center justify-end gap-1 px-1.5 pb-0.5 pt-0.5 text-[8px] leading-none text-[#667781] md:text-[10px]">
-          {message.time}
+          {item.time}
           {isOut && (
             <CheckCheck className="size-3 text-[#53bdeb] md:size-3.5" strokeWidth={2} />
           )}
@@ -587,12 +548,17 @@ function WaBubble({
 }
 
 // WhatsApp document share — a tappable file row inside the bubble.
-function WaDocCard({ name, size }: { name: string; size: string }) {
+function WaDocCard({ file }: { file: Attachment }) {
+  const meta = attachmentStyles[file.kind];
   return (
     <div className="flex items-center gap-2.5 rounded-md bg-black/[0.06] px-2.5 py-2">
       <div className="relative shrink-0">
-        <div className="flex h-9 w-7 flex-col items-center justify-end rounded-[3px] bg-[#DB4437] pb-0.5">
-          <span className="text-[7px] font-bold tracking-wide text-white">PDF</span>
+        <div
+          className={`flex h-9 w-7 flex-col items-center justify-end rounded-[3px] pb-0.5 ${meta.bg}`}
+        >
+          <span className="text-[7px] font-bold tracking-wide text-white">
+            {meta.label}
+          </span>
         </div>
         <div
           className="absolute right-0 top-0 size-2 bg-white"
@@ -601,18 +567,18 @@ function WaDocCard({ name, size }: { name: string; size: string }) {
       </div>
       <div className="min-w-0">
         <div className="truncate text-[11px] font-medium text-[#111b21] md:text-[12.5px]">
-          {name}
+          {file.name}
         </div>
         <div className="mt-0.5 text-[9px] text-[#667781] md:text-[10px]">
-          {size} · PDF
+          {file.size} · {meta.label}
         </div>
       </div>
     </div>
   );
 }
 
-// WhatsApp image share — a small moodboard collage standing in for a photo.
-function WaMoodboard() {
+// WhatsApp image share — a small collage standing in for a shared photo.
+function WaImage({ name }: { name: string }) {
   const tiles = [
     "from-indigo-500 to-purple-600",
     "from-zinc-700 to-zinc-950",
@@ -622,10 +588,15 @@ function WaMoodboard() {
     "from-amber-300 to-orange-500",
   ];
   return (
-    <div className="grid w-[176px] grid-cols-3 gap-[2px] overflow-hidden rounded-md md:w-[210px]">
-      {tiles.map((t, i) => (
-        <div key={i} className={`aspect-square bg-gradient-to-br ${t}`} />
-      ))}
+    <div>
+      <div className="grid w-[176px] grid-cols-3 gap-[2px] overflow-hidden rounded-md md:w-[210px]">
+        {tiles.map((t, i) => (
+          <div key={i} className={`aspect-square bg-gradient-to-br ${t}`} />
+        ))}
+      </div>
+      <div className="mt-1 truncate px-1.5 text-[9px] text-[#667781] md:text-[10px]">
+        {name}
+      </div>
     </div>
   );
 }
