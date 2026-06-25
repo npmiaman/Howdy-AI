@@ -74,6 +74,17 @@ const clientBrief: EmailMessage = {
   ],
 };
 
+const howdyOnIt: EmailMessage = {
+  ...howdy,
+  time: "11:03 AM",
+  snippet: "On it! 🤝",
+  body: (
+    <>
+      <p>On it! 🤝</p>
+    </>
+  ),
+};
+
 const howdyReply: EmailMessage = {
   ...howdy,
   time: "11:09 AM",
@@ -134,8 +145,8 @@ export default function MilestoneMockPage() {
           </p>
           <EmailThread
             subject="Hiring a motion graphics freelancer"
-            messages={[clientBrief]}
-            currentStep={0}
+            messages={[clientBrief, howdyOnIt]}
+            currentStep={1}
           />
         </section>
 
