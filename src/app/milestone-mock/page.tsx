@@ -61,14 +61,10 @@ const clientBrief: EmailMessage = {
   ...client,
   time: "11:02 AM",
   snippet:
-    "Hey! Help me hire a motion graphics artist for our next launch — a ~30s animated explainer. Files below 👇",
+    "Hey! Help me hire a motion graphics artist for our next launch video.",
   body: (
     <>
-      <p>Hey!</p>
-      <p>
-        Help me hire a motion graphics artist for our next launch — a ~30s
-        animated explainer. Files below.
-      </p>
+      <p>Hey! Help me hire a motion graphics artist for our next launch video.</p>
       <p>— Maya</p>
     </>
   ),
