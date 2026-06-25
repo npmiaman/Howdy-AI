@@ -398,37 +398,57 @@ const attachmentStyles: Record<
  * WhatsApp tab — same scenario energy as the email thread, different brief.
  * ------------------------------------------------------------------------- */
 
+type WaAttachment =
+  | { kind: "document"; name: string; size: string }
+  | { kind: "image"; caption?: string };
+
 type WaMessage = {
   direction: "incoming" | "outgoing";
-  text: React.ReactNode;
+  text?: React.ReactNode;
+  attachment?: WaAttachment;
   time: string;
 };
 
 const WA_MESSAGES: WaMessage[] = [
   {
     direction: "outgoing",
-    text: "Howdy! Need a video editor for our fashion drop film. 45s, 10 days 🎬",
-    time: "11:02",
+    text: "Hey Howdy — need an editor for our launch film 🎬 90-sec hero film for the homepage.",
+    time: "10:14",
   },
   {
     direction: "incoming",
-    text: "On it 🤝 Reference + budget?",
-    time: "11:04",
+    text: "On it! Quick Qs — style, deadline, footage, any refs?",
+    time: "10:16",
   },
   {
     direction: "outgoing",
-    text: "A24-teaser vibe. ~$1.5k.",
-    time: "11:07",
+    text: "Linear/Apple style, 2-week deadline, ~30 min of raw footage. Light motion graphics + original sound.",
+    time: "10:31",
+  },
+  {
+    direction: "outgoing",
+    attachment: { kind: "document", name: "brand-guidelines.pdf", size: "4.2 MB" },
+    time: "10:31",
+  },
+  {
+    direction: "outgoing",
+    attachment: { kind: "image", caption: "Moodboard for the vibe ✨" },
+    time: "10:32",
+  },
+  {
+    direction: "incoming",
+    text: "Perfect — got the guidelines + moodboard. Finding your match now.",
+    time: "10:33",
   },
   {
     direction: "incoming",
     text: (
       <>
-        Match: <strong>Leo Tan</strong> — 7 yrs, music-led cuts. $40/hr,
-        free Thursday. Reel: leotan.work
+        Match: <strong>Leo Tan</strong> — 7 yrs, launch films for Linear-style
+        brands. $40/hr, free Thursday. Reel: leotan.work
       </>
     ),
-    time: "11:31",
+    time: "10:58",
   },
 ];
 
@@ -514,6 +534,7 @@ function WaBubble({
   showTail: boolean;
 }) {
   const isOut = message.direction === "outgoing";
+  const att = message.attachment;
   return (
     <div
       className={`flex ${isOut ? "justify-end" : "justify-start"} ${
@@ -525,7 +546,7 @@ function WaBubble({
       }`}
     >
       <div
-        className={`relative max-w-[80%] rounded-lg px-2.5 pb-1 pt-1.5 text-[11px] leading-[1.35] text-[#111b21] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] md:max-w-[68%] md:px-3 md:pb-1.5 md:pt-2 md:text-[13px] ${
+        className={`relative max-w-[80%] rounded-lg p-1 text-[11px] leading-[1.35] text-[#111b21] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] md:max-w-[68%] md:text-[13px] ${
           isOut ? "bg-[#d9fdd3]" : "bg-white"
         } ${showTail ? (isOut ? "rounded-tr-none" : "rounded-tl-none") : ""}`}
       >
@@ -543,14 +564,68 @@ function WaBubble({
             <path d="M0 0 L8 0 L0 10 Z" fill="currentColor" />
           </svg>
         )}
-        {message.text}
-        <span className="float-right ml-2 mt-2 flex translate-y-0.5 items-center gap-1 text-[8px] leading-none text-[#667781] md:text-[10px]">
+
+        {att?.kind === "document" && <WaDocCard name={att.name} size={att.size} />}
+        {att?.kind === "image" && <WaMoodboard />}
+
+        {message.text && (
+          <div className="px-1.5 pt-1">{message.text}</div>
+        )}
+        {att?.kind === "image" && att.caption && (
+          <div className="px-1.5 pt-1">{att.caption}</div>
+        )}
+
+        <div className="flex items-center justify-end gap-1 px-1.5 pb-0.5 pt-0.5 text-[8px] leading-none text-[#667781] md:text-[10px]">
           {message.time}
           {isOut && (
             <CheckCheck className="size-3 text-[#53bdeb] md:size-3.5" strokeWidth={2} />
           )}
-        </span>
+        </div>
       </div>
+    </div>
+  );
+}
+
+// WhatsApp document share — a tappable file row inside the bubble.
+function WaDocCard({ name, size }: { name: string; size: string }) {
+  return (
+    <div className="flex items-center gap-2.5 rounded-md bg-black/[0.06] px-2.5 py-2">
+      <div className="relative shrink-0">
+        <div className="flex h-9 w-7 flex-col items-center justify-end rounded-[3px] bg-[#DB4437] pb-0.5">
+          <span className="text-[7px] font-bold tracking-wide text-white">PDF</span>
+        </div>
+        <div
+          className="absolute right-0 top-0 size-2 bg-white"
+          style={{ clipPath: "polygon(0 0, 100% 100%, 100% 0)" }}
+        />
+      </div>
+      <div className="min-w-0">
+        <div className="truncate text-[11px] font-medium text-[#111b21] md:text-[12.5px]">
+          {name}
+        </div>
+        <div className="mt-0.5 text-[9px] text-[#667781] md:text-[10px]">
+          {size} · PDF
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// WhatsApp image share — a small moodboard collage standing in for a photo.
+function WaMoodboard() {
+  const tiles = [
+    "from-indigo-500 to-purple-600",
+    "from-zinc-700 to-zinc-950",
+    "from-sky-400 to-blue-600",
+    "from-rose-400 to-pink-600",
+    "from-emerald-400 to-teal-600",
+    "from-amber-300 to-orange-500",
+  ];
+  return (
+    <div className="grid w-[176px] grid-cols-3 gap-[2px] overflow-hidden rounded-md md:w-[210px]">
+      {tiles.map((t, i) => (
+        <div key={i} className={`aspect-square bg-gradient-to-br ${t}`} />
+      ))}
     </div>
   );
 }
