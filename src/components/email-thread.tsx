@@ -24,7 +24,7 @@ import {
 export type Attachment = {
   name: string;
   size: string;
-  kind: "pdf" | "image" | "audio" | "figma";
+  kind: "pdf" | "image" | "audio" | "figma" | "gdrive";
 };
 
 export type EmailMessage = {
@@ -353,13 +353,16 @@ function AttachmentCard({ file }: { file: Attachment }) {
         <div className="truncate text-[13px] font-medium leading-tight text-neutral-800">
           {file.name}
         </div>
-        <div className="mt-0.5 text-[11px] text-neutral-500">{file.size}</div>
+        <div className="mt-0.5 text-[11px] text-neutral-500">
+          {file.kind === "gdrive" ? "Google Drive" : file.size}
+        </div>
       </div>
     </div>
   );
 }
 
 function FileIcon({ kind }: { kind: Attachment["kind"] }) {
+  if (kind === "gdrive") return <DriveIcon className="h-7 w-8" />;
   const meta = attachmentStyles[kind];
   return (
     <div className="relative shrink-0">
@@ -386,7 +389,22 @@ const attachmentStyles: Record<
   image: { bg: "bg-[#0F9D58]", label: "PNG" },
   audio: { bg: "bg-[#4285F4]", label: "MP3" },
   figma: { bg: "bg-[#A142F4]", label: "FIG" },
+  gdrive: { bg: "bg-[#1FA463]", label: "DRIVE" },
 };
+
+// The Google Drive tri-color triangle logo.
+function DriveIcon({ className = "h-7 w-8" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 87.3 78" className={`shrink-0 ${className}`} aria-hidden>
+      <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da" />
+      <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47" />
+      <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335" />
+      <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d" />
+      <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc" />
+      <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.151 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00" />
+    </svg>
+  );
+}
 
 /* ---------------------------------------------------------------------------
  * WhatsApp tab — the SAME conversation as the Gmail thread, rendered as a chat.
@@ -543,27 +561,32 @@ function WaBubble({
 // WhatsApp document share — a tappable file row inside the bubble.
 function WaDocCard({ file }: { file: Attachment }) {
   const meta = attachmentStyles[file.kind];
+  const isDrive = file.kind === "gdrive";
   return (
     <div className="flex items-center gap-2.5 rounded-md bg-black/[0.06] px-2.5 py-2">
-      <div className="relative shrink-0">
-        <div
-          className={`flex h-9 w-7 flex-col items-center justify-end rounded-[3px] pb-0.5 ${meta.bg}`}
-        >
-          <span className="text-[7px] font-bold tracking-wide text-white">
-            {meta.label}
-          </span>
+      {isDrive ? (
+        <DriveIcon className="h-7 w-8" />
+      ) : (
+        <div className="relative shrink-0">
+          <div
+            className={`flex h-9 w-7 flex-col items-center justify-end rounded-[3px] pb-0.5 ${meta.bg}`}
+          >
+            <span className="text-[7px] font-bold tracking-wide text-white">
+              {meta.label}
+            </span>
+          </div>
+          <div
+            className="absolute right-0 top-0 size-2 bg-white"
+            style={{ clipPath: "polygon(0 0, 100% 100%, 100% 0)" }}
+          />
         </div>
-        <div
-          className="absolute right-0 top-0 size-2 bg-white"
-          style={{ clipPath: "polygon(0 0, 100% 100%, 100% 0)" }}
-        />
-      </div>
+      )}
       <div className="min-w-0">
         <div className="truncate text-[11px] font-medium text-[#111b21] md:text-[12.5px]">
           {file.name}
         </div>
         <div className="mt-0.5 text-[9px] text-[#667781] md:text-[10px]">
-          {file.size} · {meta.label}
+          {isDrive ? "Google Drive" : `${file.size} · ${meta.label}`}
         </div>
       </div>
     </div>

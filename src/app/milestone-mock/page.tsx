@@ -48,6 +48,64 @@ const paymentEmail: EmailMessage = {
   ),
 };
 
+// A client (the hirer) messaging Howdy. "outgoing" → green/right in WhatsApp.
+const client = {
+  from: "Maya Chen",
+  email: "maya@northwind.studio",
+  initial: "M",
+  color: "bg-rose-500",
+  direction: "outgoing" as const,
+};
+
+const clientBrief: EmailMessage = {
+  ...client,
+  time: "11:02 AM",
+  snippet:
+    "Hey Howdy! Looking to hire a freelancer for a motion graphics project 🎬 We're launching our app next month and need a ~30s animated explainer — clean kinetic typography, a couple of UI screens animating in, upbeat but minimal. Roughly a 3-week turnaround. Dropped our brand guidelines + a moodboard below 👇",
+  body: (
+    <>
+      <p>Hey Howdy!</p>
+      <p>
+        Looking to hire a freelancer for a motion graphics project. We&apos;re
+        launching our new app next month and need a ~30-second animated
+        explainer — clean kinetic typography, a couple of UI screens animating
+        in, upbeat but minimal.
+      </p>
+      <p>
+        Turnaround is roughly 3 weeks. I&apos;ve dropped our brand guidelines and
+        a moodboard below.
+      </p>
+      <p>— Maya</p>
+    </>
+  ),
+  attachments: [
+    { name: "Brand Guidelines — Master.pdf", size: "—", kind: "gdrive" },
+    { name: "Brand Guidelines — Motion.pdf", size: "—", kind: "gdrive" },
+    { name: "Launch Moodboard.pdf", size: "—", kind: "gdrive" },
+  ],
+};
+
+const howdyReply: EmailMessage = {
+  ...howdy,
+  time: "11:09 AM",
+  snippet:
+    "Love this — kinetic type + minimal is a great call for an explainer. Going through your guidelines + moodboard now. I'll line up a vetted motion designer who's shipped app-launch explainers and send you a shortlist by EOD 🤝",
+  body: (
+    <>
+      <p>Hi Maya,</p>
+      <p>
+        Love this — kinetic type + minimal is a great call for a launch
+        explainer. I&apos;m going through your brand guidelines and moodboard now.
+      </p>
+      <p>
+        I&apos;ll line up a vetted motion designer who&apos;s shipped app-launch
+        explainers and send you a shortlist by end of day.
+      </p>
+      <p>— Howdy</p>
+    </>
+  ),
+};
+
 export default function MilestoneMockPage() {
   return (
     <main className="min-h-screen bg-neutral-100 px-4 py-12 md:py-16">
@@ -77,6 +135,28 @@ export default function MilestoneMockPage() {
           <EmailThread
             subject="Milestone 3 — payment released"
             messages={[paymentEmail]}
+            currentStep={0}
+          />
+        </section>
+
+        <section>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
+            3 · Client brief + Google Drive files
+          </p>
+          <EmailThread
+            subject="Hiring a motion graphics freelancer"
+            messages={[clientBrief]}
+            currentStep={0}
+          />
+        </section>
+
+        <section>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
+            4 · Howdy responds
+          </p>
+          <EmailThread
+            subject="Re: Hiring a motion graphics freelancer"
+            messages={[howdyReply]}
             currentStep={0}
           />
         </section>
