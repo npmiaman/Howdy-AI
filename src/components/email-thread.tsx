@@ -24,7 +24,7 @@ import {
 export type Attachment = {
   name: string;
   size: string;
-  kind: "pdf" | "image" | "audio" | "figma" | "gdrive";
+  kind: "pdf" | "image" | "audio" | "figma" | "gdrive" | "gdoc";
 };
 
 export type EmailMessage = {
@@ -354,7 +354,7 @@ function AttachmentCard({ file }: { file: Attachment }) {
           {file.name}
         </div>
         <div className="mt-0.5 text-[11px] text-neutral-500">
-          {file.kind === "gdrive" ? "Google Drive" : file.size}
+          {cloudLabel(file.kind) ?? file.size}
         </div>
       </div>
     </div>
@@ -362,7 +362,7 @@ function AttachmentCard({ file }: { file: Attachment }) {
 }
 
 function FileIcon({ kind }: { kind: Attachment["kind"] }) {
-  if (kind === "gdrive") return <DriveIcon className="h-7 w-8" />;
+  if (cloudLabel(kind)) return <CloudIcon kind={kind} />;
   const meta = attachmentStyles[kind];
   return (
     <div className="relative shrink-0">
@@ -390,7 +390,15 @@ const attachmentStyles: Record<
   audio: { bg: "bg-[#4285F4]", label: "MP3" },
   figma: { bg: "bg-[#A142F4]", label: "FIG" },
   gdrive: { bg: "bg-[#1FA463]", label: "DRIVE" },
+  gdoc: { bg: "bg-[#4285F4]", label: "DOC" },
 };
+
+// Cloud-file kinds render their own brand logo + a "Google …" label.
+function cloudLabel(kind: Attachment["kind"]): string | null {
+  if (kind === "gdrive") return "Google Drive";
+  if (kind === "gdoc") return "Google Docs";
+  return null;
+}
 
 // The Google Drive tri-color triangle logo.
 function DriveIcon({ className = "h-7 w-8" }: { className?: string }) {
@@ -404,6 +412,29 @@ function DriveIcon({ className = "h-7 w-8" }: { className?: string }) {
       <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.151 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00" />
     </svg>
   );
+}
+
+// The Google Docs blue document logo.
+function DocsIcon({ className = "h-8 w-6" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 47 64" className={`shrink-0 ${className}`} aria-hidden>
+      <path
+        d="M29.5 0H6C2.7 0 0 2.7 0 6v52c0 3.3 2.7 6 6 6h35c3.3 0 6-2.7 6-6V17.5z"
+        fill="#4285F4"
+      />
+      <path d="M29.5 0v12c0 3 2.5 5.5 5.5 5.5H47z" fill="#A1C2FA" />
+      <g fill="#fff">
+        <rect x="11" y="29" width="25" height="3" rx="1.5" />
+        <rect x="11" y="37" width="25" height="3" rx="1.5" />
+        <rect x="11" y="45" width="16" height="3" rx="1.5" />
+      </g>
+    </svg>
+  );
+}
+
+function CloudIcon({ kind }: { kind: Attachment["kind"] }) {
+  if (kind === "gdrive") return <DriveIcon className="h-7 w-8" />;
+  return <DocsIcon className="h-8 w-6" />;
 }
 
 /* ---------------------------------------------------------------------------
@@ -561,11 +592,11 @@ function WaBubble({
 // WhatsApp document share — a tappable file row inside the bubble.
 function WaDocCard({ file }: { file: Attachment }) {
   const meta = attachmentStyles[file.kind];
-  const isDrive = file.kind === "gdrive";
+  const cloud = cloudLabel(file.kind);
   return (
     <div className="flex items-center gap-2.5 rounded-md bg-black/[0.06] px-2.5 py-2">
-      {isDrive ? (
-        <DriveIcon className="h-7 w-8" />
+      {cloud ? (
+        <CloudIcon kind={file.kind} />
       ) : (
         <div className="relative shrink-0">
           <div
@@ -586,7 +617,7 @@ function WaDocCard({ file }: { file: Attachment }) {
           {file.name}
         </div>
         <div className="mt-0.5 text-[9px] text-[#667781] md:text-[10px]">
-          {isDrive ? "Google Drive" : `${file.size} · ${meta.label}`}
+          {cloud ?? `${file.size} · ${meta.label}`}
         </div>
       </div>
     </div>

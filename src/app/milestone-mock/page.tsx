@@ -61,27 +61,20 @@ const clientBrief: EmailMessage = {
   ...client,
   time: "11:02 AM",
   snippet:
-    "Hey Howdy! Looking to hire a freelancer for a motion graphics project 🎬 We're launching our app next month and need a ~30s animated explainer — clean kinetic typography, a couple of UI screens animating in, upbeat but minimal. Roughly a 3-week turnaround. Dropped our brand guidelines + a moodboard below 👇",
+    "Hey! Help me hire a motion graphics artist for our next launch — a ~30s animated explainer. Files below 👇",
   body: (
     <>
-      <p>Hey Howdy!</p>
+      <p>Hey!</p>
       <p>
-        Looking to hire a freelancer for a motion graphics project. We&apos;re
-        launching our new app next month and need a ~30-second animated
-        explainer — clean kinetic typography, a couple of UI screens animating
-        in, upbeat but minimal.
-      </p>
-      <p>
-        Turnaround is roughly 3 weeks. I&apos;ve dropped our brand guidelines and
-        a moodboard below.
+        Help me hire a motion graphics artist for our next launch — a ~30s
+        animated explainer. Files below.
       </p>
       <p>— Maya</p>
     </>
   ),
   attachments: [
-    { name: "Brand Guidelines — Master.pdf", size: "—", kind: "gdrive" },
-    { name: "Brand Guidelines — Motion.pdf", size: "—", kind: "gdrive" },
-    { name: "Launch Moodboard.pdf", size: "—", kind: "gdrive" },
+    { name: "Brand Guidelines", size: "—", kind: "gdoc" },
+    { name: "Launch Moodboard.png", size: "—", kind: "gdrive" },
   ],
 };
 
@@ -141,7 +134,7 @@ export default function MilestoneMockPage() {
 
         <section>
           <p className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
-            3 · Client brief + Google Drive files
+            3 · Client brief + shared files
           </p>
           <EmailThread
             subject="Hiring a motion graphics freelancer"
