@@ -106,6 +106,24 @@ const howdyReply: EmailMessage = {
   ),
 };
 
+const matchMessage: EmailMessage = {
+  ...howdy,
+  time: "2:15 PM",
+  snippet:
+    "Hey! Found you a match 🎯 Meet Leo Tan. 7 yrs in motion design, with launch explainers for Linear-style brands. His kinetic-type reels are exactly the clean, minimal vibe you're after.",
+  body: (
+    <>
+      <p>Hey! Found you a match 🎯</p>
+      <p>
+        Meet Leo Tan. 7 yrs in motion design, with launch explainers for
+        Linear-style brands. His kinetic-type reels are exactly the clean,
+        minimal vibe you&apos;re after.
+      </p>
+    </>
+  ),
+  cta: { label: "View Leo's profile", href: "https://leotan.work" },
+};
+
 export default function MilestoneMockPage() {
   return (
     <main className="min-h-screen bg-neutral-100 px-4 py-12 md:py-16">
@@ -157,6 +175,17 @@ export default function MilestoneMockPage() {
           <EmailThread
             subject="Re: Hiring a motion graphics freelancer"
             messages={[howdyReply]}
+            currentStep={0}
+          />
+        </section>
+
+        <section>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-400">
+            5 · Match found + profile link
+          </p>
+          <EmailThread
+            subject="Found your match — Leo Tan"
+            messages={[matchMessage]}
             currentStep={0}
           />
         </section>

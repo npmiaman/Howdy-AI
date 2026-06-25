@@ -6,6 +6,7 @@ import {
   Archive,
   ArrowLeft,
   CheckCheck,
+  ExternalLink,
   Forward,
   Mail,
   Mic,
@@ -27,6 +28,9 @@ export type Attachment = {
   kind: "pdf" | "image" | "audio" | "figma" | "gdrive" | "gdoc";
 };
 
+// An optional click-to-open link button (WhatsApp CTA / Gmail button).
+export type Cta = { label: string; href: string };
+
 export type EmailMessage = {
   from: string;
   email: string;
@@ -37,6 +41,7 @@ export type EmailMessage = {
   body: React.ReactNode;
   snippet: string;
   attachments?: Attachment[];
+  cta?: Cta;
   avatarSrc?: string;
   avatarBlend?: boolean;
 };
@@ -321,6 +326,18 @@ function ExpandedEmail({ message }: { message: EmailMessage }) {
           {message.attachments && message.attachments.length > 0 && (
             <Attachments attachments={message.attachments} />
           )}
+
+          {message.cta && (
+            <a
+              href={message.cta.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-[#1a73e8] px-4 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-[#1765cc]"
+            >
+              <ExternalLink className="size-3.5" strokeWidth={2.25} />
+              {message.cta.label}
+            </a>
+          )}
         </div>
       </div>
     </div>
@@ -446,6 +463,7 @@ type WaItem = {
   time: string;
   text?: React.ReactNode;
   attachment?: Attachment;
+  cta?: Cta;
 };
 
 // Flatten the email thread into chat items: a text bubble per message plus one
@@ -454,7 +472,12 @@ function toWaItems(messages: EmailMessage[]): WaItem[] {
   const items: WaItem[] = [];
   for (const m of messages) {
     if (m.snippet) {
-      items.push({ direction: m.direction, time: m.time, text: m.snippet });
+      items.push({
+        direction: m.direction,
+        time: m.time,
+        text: m.snippet,
+        cta: m.cta,
+      });
     }
     for (const a of m.attachments ?? []) {
       items.push({ direction: m.direction, time: m.time, attachment: a });
@@ -582,6 +605,18 @@ function WaBubble({
             <CheckCheck className="size-3 text-[#53bdeb] md:size-3.5" strokeWidth={2} />
           )}
         </div>
+
+        {item.cta && (
+          <a
+            href={item.cta.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-0.5 flex items-center justify-center gap-1.5 rounded-b-lg border-t border-black/[0.07] px-2 py-2 text-[12px] font-medium text-[#027eb5] transition-colors hover:bg-black/[0.03] md:text-[13px]"
+          >
+            <ExternalLink className="size-3.5" strokeWidth={2} />
+            {item.cta.label}
+          </a>
+        )}
       </div>
     </div>
   );
