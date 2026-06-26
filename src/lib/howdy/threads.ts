@@ -78,6 +78,47 @@ export async function findOrCreateThread(args: {
   return created as ThreadRow;
 }
 
+/** Strip leading Re:/Fwd:/Fw: (possibly repeated) and normalize for matching. */
+export function normalizeSubject(subject: string | null | undefined): string {
+  return (subject ?? "")
+    .replace(/^((re|fwd?|fw)\s*:\s*)+/i, "")
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Resolve an EMAIL conversation by (sender + normalized subject) instead of the
+ * AgentMail thread id — which changes on every send/reply and fragments one
+ * conversation into many threads. This keeps a person's welcome + all their
+ * replies on a single thread. Falls back to the thread-id path / creation.
+ */
+export async function findOrCreateEmailThread(args: {
+  gmailThreadId: string;
+  userEmail: string;
+  subject?: string;
+}): Promise<ThreadRow> {
+  const supabase = getSupabaseAdmin();
+  const base = normalizeSubject(args.subject);
+  if (base && args.userEmail) {
+    // Earliest matching thread for this sender + subject = the canonical one.
+    const { data: rows } = await supabase
+      .from("threads")
+      .select("*")
+      .ilike("user_email", args.userEmail)
+      .order("created_at", { ascending: true })
+      .limit(50);
+    const match = (rows ?? []).find(
+      (r) => normalizeSubject((r as ThreadRow).subject) === base,
+    );
+    if (match) {
+      await mirrorThread(match as ThreadRow);
+      return match as ThreadRow;
+    }
+  }
+  // No existing conversation — fall back to the thread-id path (creates one).
+  return findOrCreateThread(args);
+}
+
 /**
  * Append a message unless the thread's most recent message is byte-identical
  * (same role + content) — which means this is a duplicate from a client retry.
