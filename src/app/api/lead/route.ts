@@ -10,7 +10,7 @@ import { saveMemories } from "@/lib/howdy/memories";
 import {
   appendMessage,
   findMostRecentThreadByEmail,
-  findOrCreateThread,
+  findOrCreateEmailThread,
   getLatestGmailMessageId,
 } from "@/lib/howdy/threads";
 import { composeWelcomeBack } from "@/lib/howdy/welcome";
@@ -228,7 +228,7 @@ export async function POST(request: Request) {
 
     if (isSupabaseConfigured() && sent.threadId) {
       try {
-        const thread = await findOrCreateThread({
+        const thread = await findOrCreateEmailThread({
           gmailThreadId: sent.threadId,
           userEmail: email,
           subject,

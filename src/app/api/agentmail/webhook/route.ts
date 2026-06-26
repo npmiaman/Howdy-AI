@@ -30,7 +30,7 @@ import {
 } from "@/lib/howdy/scheduler";
 import {
   appendMessage,
-  findOrCreateThread,
+  findOrCreateEmailThread,
   loadMessages,
   markThreadProcessed,
   saveBrief,
@@ -113,7 +113,7 @@ export async function POST(request: Request) {
     if (candidate) {
       // Record the freelancer's inbound reply on the conversation so it shows
       // up in Momo (and mirrors to the backup DB) — not just our outreach.
-      const inThread = await findOrCreateThread({
+      const inThread = await findOrCreateEmailThread({
         gmailThreadId: email.threadId,
         userEmail: email.fromEmail,
         subject: email.subject,
@@ -153,7 +153,7 @@ export async function POST(request: Request) {
     // ----------------------------------------------------------------------
     const checkin = await findCheckinByThread(email.threadId);
     if (checkin) {
-      const inThread = await findOrCreateThread({
+      const inThread = await findOrCreateEmailThread({
         gmailThreadId: email.threadId,
         userEmail: email.fromEmail,
         subject: email.subject,
@@ -234,7 +234,7 @@ export async function POST(request: Request) {
     // ----------------------------------------------------------------------
     // ROUTE 3 — default: client brief conversation.
     // ----------------------------------------------------------------------
-    const thread = await findOrCreateThread({
+    const thread = await findOrCreateEmailThread({
       gmailThreadId: email.threadId, // reusing same column for any provider's thread id
       userEmail: email.fromEmail,
       subject: email.subject,
