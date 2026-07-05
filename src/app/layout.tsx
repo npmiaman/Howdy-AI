@@ -1,3 +1,4 @@
+import PigeonSchema from "./pigeon-schema";
 import type { Metadata } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 import localFont from "next/font/local";
@@ -38,6 +39,7 @@ export default function RootLayout({
       className={`${ppMondwest.variable} ${geistMono.variable} ${inter.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        <PigeonSchema />
         <div
           aria-hidden
           className="pointer-events-none fixed inset-0 -z-20 bg-cover bg-center bg-no-repeat"

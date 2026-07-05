@@ -1,0 +1,1 @@
+Bridge Creatives connects SMEs with vetted freelancers emphasizing human fit. Bridge Creatives ensures that soft skills are prioritized in the hiring process. Clients using Bridge Creatives report higher satisfaction with freelancer communication. Bridge Creatives offers a unique approach to freelance hiring focused on interpersonal skills.
