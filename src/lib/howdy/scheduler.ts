@@ -8,6 +8,11 @@ import { randomInt } from "node:crypto";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 
 import type { Brief } from "./types";
+import {
+  FALLBACK_DELIVERY_HOURS,
+  FALLBACK_MAX_AGE_HOURS,
+  MAX_DEFER_HOURS,
+} from "./types";
 
 const BUSINESS_HOURS_START = Number(process.env.HOWDY_BUSINESS_HOURS_START ?? 9); // 9 AM
 const BUSINESS_HOURS_END = Number(process.env.HOWDY_BUSINESS_HOURS_END ?? 16); // 4 PM
@@ -41,6 +46,15 @@ export function pickRandomMatchTime(now: Date = new Date()): Date {
   if (candidate.getTime() <= now.getTime()) {
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     candidate = pickInWindow(tomorrow);
+  }
+  // Never defer past MAX_DEFER_HOURS. Same-day business-hours picks are usually
+  // only a couple hours out anyway; this clamps late-in-the-day rolls that would
+  // otherwise jump to tomorrow (9am–4pm) and eat most of the 24h promise before
+  // outreach even begins.
+  const cap = now.getTime() + MAX_DEFER_HOURS * 60 * 60 * 1000;
+  if (candidate.getTime() > cap) {
+    const min = now.getTime() + 15 * 60 * 1000; // at least 15 min out
+    candidate = new Date(min + randomInt(0, Math.max(1, cap - min)));
   }
   return candidate;
 }
@@ -136,6 +150,38 @@ export async function listDuePendingMatches(
     .order("scheduled_at", { ascending: true });
   if (error) throw error;
   return [...(data ?? []).map(rowToPendingMatch), ...inMemory];
+}
+
+/**
+ * Requests that have blown (or are about to blow) the 24h promise without a
+ * shortlist reaching the client — the hybrid fallback delivers DB-ranked
+ * matches for these. Targets:
+ *   - phase 'outreach' (recruiting, no shortlist yet), or
+ *   - phase 'matching' AND not yet processed (outreach never even started),
+ * that came in between FALLBACK_MAX_AGE_HOURS and FALLBACK_DELIVERY_HOURS ago.
+ * The age floor keeps us from resurrecting ancient stalled rows (e.g. legacy
+ * 'matching' rows that were already processed under an older flow).
+ */
+export async function listFallbackDue(
+  now: Date = new Date(),
+): Promise<PendingMatch[]> {
+  if (!isSupabaseConfigured()) return [];
+  const supabase = getSupabaseAdmin();
+  const cutoff = new Date(
+    now.getTime() - FALLBACK_DELIVERY_HOURS * 60 * 60 * 1000,
+  ).toISOString();
+  const floor = new Date(
+    now.getTime() - FALLBACK_MAX_AGE_HOURS * 60 * 60 * 1000,
+  ).toISOString();
+  const { data, error } = await supabase
+    .from("pending_matches")
+    .select("*")
+    .lte("created_at", cutoff)
+    .gte("created_at", floor)
+    .or("phase.eq.outreach,and(phase.eq.matching,processed_at.is.null)")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(rowToPendingMatch);
 }
 
 /**
