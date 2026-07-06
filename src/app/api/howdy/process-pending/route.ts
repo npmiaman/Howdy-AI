@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import {
+  deliverFallbackShortlist,
   sendDueConnects,
   startOutreach,
   sweepTimeouts,
@@ -12,6 +13,7 @@ import {
 import {
   listDueConnects,
   listDuePendingMatches,
+  listFallbackDue,
   listRequestsInPhase,
   markPendingProcessed,
 } from "@/lib/howdy/scheduler";
@@ -48,8 +50,40 @@ export async function GET(request: Request) {
 
   const results: Array<{ step: string; id?: string; detail?: string }> = [];
 
+  // ---- 0. Hard 24h fallback FIRST. Any request nearing 24h without a
+  //         delivered shortlist gets DB-ranked matches sent now, and is marked
+  //         processed so step 1 won't also kick off (duplicate) outreach. ----
+  const fallbackDue = await listFallbackDue();
+  for (const request of fallbackDue) {
+    try {
+      const { delivered, count, provisional } =
+        await deliverFallbackShortlist(request);
+      // Mark processed regardless: delivered → done; not delivered (e.g. no
+      // freelancers matched) → don't keep retrying every run.
+      await markPendingProcessed({
+        id: request.id,
+        matchedFreelancerId: null,
+        replyMessageId: null,
+      });
+      results.push({
+        step: delivered ? "fallback_delivered" : "fallback_no_matches",
+        id: request.id,
+        detail: delivered
+          ? `${count} ${provisional ? "provisional" : "confirmed"} pick(s)`
+          : "no freelancers matched the brief",
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(`[process-pending] fallback ${request.id}:`, detail);
+      results.push({ step: "error_fallback", id: request.id, detail });
+    }
+  }
+  const fallbackIds = new Set(fallbackDue.map((r) => r.id));
+
   // ---- 1. New requests whose deferred time is due → start outreach. ----
-  const due = await listDuePendingMatches();
+  const due = (await listDuePendingMatches()).filter(
+    (r) => !fallbackIds.has(r.id),
+  );
   for (const request of due) {
     try {
       const { invited, poolSize } = await startOutreach(request);

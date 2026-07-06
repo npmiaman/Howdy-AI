@@ -257,6 +257,75 @@ export async function sendShortlistToClient(
 }
 
 // ---------------------------------------------------------------------------
+// 3b. Hard 24h fallback. If the recruit-then-confirm flow hasn't produced a
+//     shortlist in time, deliver the best-ranked DB matches directly so the
+//     client always gets something inside 24h. Prefers freelancers who already
+//     accepted; otherwise sends top-ranked picks flagged as still-being-
+//     confirmed (honest copy — see clientShortlistEmail `provisional`).
+// ---------------------------------------------------------------------------
+export async function deliverFallbackShortlist(
+  request: PendingMatch,
+): Promise<{ delivered: boolean; count: number; provisional: boolean }> {
+  let candidates = await listCandidates(request.id);
+
+  // Outreach may never have started (phase still 'matching') — rank now.
+  if (candidates.length === 0) {
+    const ranked = await rankMatches(request.brief);
+    if (ranked.length === 0)
+      return { delivered: false, count: 0, provisional: false };
+    await seedCandidates({
+      requestId: request.id,
+      threadId: request.threadId,
+      ranked,
+    });
+    candidates = await listCandidates(request.id);
+  }
+
+  const accepts = candidates
+    .filter((c) => c.status === "accepted")
+    .sort((a, b) => a.rank - b.rank);
+  // Confirmed acceptors take priority; if none, fall back to top-ranked.
+  const provisional = accepts.length === 0;
+  const chosen = (provisional
+    ? [...candidates].sort((a, b) => a.rank - b.rank)
+    : accepts
+  ).slice(0, SHORTLIST_TARGET);
+
+  const freelancers = await freelancerMap(chosen);
+  const picks = chosen
+    .map((c) => {
+      const f = freelancers.get(c.freelancerId);
+      return f ? { freelancer: f, rationale: c.rationale } : null;
+    })
+    .filter(
+      (p): p is { freelancer: Freelancer; rationale: string | null } =>
+        p !== null,
+    );
+  if (picks.length === 0)
+    return { delivered: false, count: 0, provisional };
+
+  const body = await clientShortlistEmail({
+    brief: request.brief,
+    picks,
+    fewerThanTarget: picks.length < SHORTLIST_TARGET,
+    provisional,
+  });
+
+  const inboundId = await lastInboundMessageId(request.threadId);
+  await dispatch({
+    kind: "client_shortlist",
+    to: request.userEmail,
+    subject: request.subject ?? "Your shortlist is ready",
+    text: body,
+    replyToMessageId: inboundId,
+  });
+  await setRequestPhase(request.id, "shortlist_sent", {
+    shortlistSentAt: new Date(),
+  });
+  return { delivered: true, count: picks.length, provisional };
+}
+
+// ---------------------------------------------------------------------------
 // 4. Timeout sweep: invited + no reply past the window → pass to next-ranked.
 //    Called by the cron worker.
 // ---------------------------------------------------------------------------
