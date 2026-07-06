@@ -204,7 +204,21 @@ export type BriefAssessment = {
 // ---------------------------------------------------------------------------
 export const SHORTLIST_TARGET = 3; // accepts needed before we go to the client
 export const INITIAL_INVITES = 3; // freelancers invited up front
-export const REPLY_TIMEOUT_HOURS = 24; // no-reply → pass to next-ranked
+export const REPLY_TIMEOUT_HOURS = 6; // no-reply → pass to next-ranked (was 24; frequent cron cycles the roster fast so a confirmed shortlist can land well inside 24h)
+
+// Hard guarantee: every actionable request gets a shortlist delivered to the
+// client within 24h. If the recruit-then-confirm flow hasn't produced one by
+// this many hours after the request came in, we deliver the best-ranked DB
+// matches directly (flagged as still-being-confirmed — see clientShortlistEmail).
+export const FALLBACK_DELIVERY_HOURS = 20;
+
+// Don't resurrect ancient stalled requests with the fallback — only ones from
+// the recent past that genuinely haven't been delivered.
+export const FALLBACK_MAX_AGE_HOURS = 72;
+
+// The "lazy match" defer never pushes outreach more than this far out, so the
+// recruit flow + the 20h fallback both fit inside the 24h promise.
+export const MAX_DEFER_HOURS = 3;
 
 export type RequestPhase =
   | "matching"

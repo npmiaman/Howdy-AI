@@ -1,15 +1,20 @@
 name: Howdy cron — drain pending matches
 
-# Runs every minute. Vercel Hobby caps cron at once-per-day, so we use GH Actions
-# to hit the route on the production deploy. Free + no plan upgrade needed.
+# Vercel Hobby caps project cron at once-per-day, so we use GH Actions to hit
+# the worker on the production deploy. Free + no plan upgrade needed.
+#
+# Cadence note: GitHub throttles sub-5-min schedules hard and silently drops
+# ticks (a "* * * * *" schedule really lands every 1-4h). Every 15 min is
+# honored far more reliably. The saga only needs to advance a step at a time and
+# the 20h fallback guarantees delivery, so 15 min is plenty.
 #
 # Required GitHub Actions secrets:
-#   HOWDY_DEPLOYMENT_URL   — e.g. https://bchowdy.vercel.app  (no trailing slash)
+#   HOWDY_DEPLOYMENT_URL   — e.g. https://bridgecreatives.co  (no trailing slash)
 #   CRON_SECRET            — must match the same env var on Vercel
 
 on:
   schedule:
-    - cron: "* * * * *" # every minute
+    - cron: "*/15 * * * *" # every 15 min (GitHub may still delay under load)
   workflow_dispatch: {} # also trigger manually from the Actions tab
 
 concurrency:
