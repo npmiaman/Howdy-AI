@@ -19,6 +19,7 @@ import {
   handleFreelancerDecision,
   parseClientSelection,
 } from "@/lib/howdy/outreach";
+import { maybeNotifyInbound } from "@/lib/howdy/notify";
 import {
   findCheckinByThread,
   handleCheckinReply,
@@ -104,12 +105,23 @@ export async function POST(request: Request) {
   }
 
   try {
+    // Classify the sender up front (an outreach-thread match => freelancer),
+    // and fire a "1 new client / 1 new freelancer" alert to the ops inbox.
+    // Awaited (so it completes on serverless) but never throws.
+    const candidate = await findCandidateByOutreachThread(email.threadId);
+    await maybeNotifyInbound({
+      messageId: email.messageId,
+      fromEmail: email.fromEmail,
+      subject: email.subject,
+      body: email.body,
+      isFreelancerThread: candidate !== null,
+    });
+
     // ----------------------------------------------------------------------
     // ROUTE 1 — is this a FREELANCER replying to an outreach check-in?
     // Matched by the outreach thread we emailed them on. Their replies never
     // touch the client conversation.
     // ----------------------------------------------------------------------
-    const candidate = await findCandidateByOutreachThread(email.threadId);
     if (candidate) {
       // Record the freelancer's inbound reply on the conversation so it shows
       // up in Momo (and mirrors to the backup DB) — not just our outreach.
