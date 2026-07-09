@@ -110,11 +110,9 @@ export function SiteHeader({
           Howdy
         </Link>
         <div className="flex items-center gap-2 md:gap-3">
-          {variant === "freelancer" && (
-            <Link href={crossLink.href} className={linkClass}>
-              {crossLink.label}
-            </Link>
-          )}
+          <Link href={crossLink.href} className={linkClass}>
+            {crossLink.label}
+          </Link>
           <ContactButton className={contactClass}>
             Get in touch
           </ContactButton>
