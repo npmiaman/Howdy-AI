@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import { Check, ChevronDown, Star, X } from "lucide-react";
+import Image from "next/image";
+import { ArrowUpRight, Check, ChevronDown, Sparkles, Star, X } from "lucide-react";
 
 import { ContactDialog } from "@/components/contact-dialog";
 import { EmailThread, type EmailMessage } from "@/components/email-thread";
+import { HomeChrome } from "@/components/home-chrome";
 import { SiteFooter } from "@/components/site-footer";
-import { SiteHeader } from "@/components/site-header";
+import { CAT_ASCII, BLOB_ASCII } from "@/lib/ascii-art";
 
 const INVITE_MAILTO =
   "mailto:howdyai@agentmail.to?subject=Request%20to%20join%20Howdy%27s%20freelancer%20roster";
@@ -17,59 +19,35 @@ export const metadata: Metadata = {
 
 export default function FreelancersPage() {
   return (
-    <div className="flex min-h-screen flex-col">
-      <SiteHeader variant="freelancer" />
+    <div className="relative z-0 flex min-h-screen flex-col overflow-x-clip text-zinc-900">
+      {/* White page bg — covers the dark layout backdrop. */}
+      <div aria-hidden className="fixed inset-0 -z-20 bg-white" />
+      <HomeChrome variant="freelancer" />
       <main className="flex-1">
-        <section className="mx-auto w-full max-w-7xl px-4 pt-20 pb-2 sm:px-6 md:pt-24 md:pb-4 lg:pt-36 lg:pb-8">
-          <Hero />
+        <section className="mx-auto w-full max-w-6xl px-6 pt-4 sm:px-10 md:px-14 md:pt-6 md:pb-6">
+          <HeroCard />
         </section>
-        <section className="mx-auto w-full max-w-7xl px-4 pb-12 sm:px-6 md:pb-20 lg:pb-32">
-          <BriefPreview />
+        <section className="mx-auto w-full max-w-7xl px-4 pt-10 pb-12 sm:px-6 md:pt-14 md:pb-16">
           <StatStrip />
         </section>
         <HowItWorks />
         <Differentiation />
         <FinalCTA />
         <FAQ />
+        <SiteFooter />
       </main>
-      <SiteFooter />
       <ContactDialog />
     </div>
   );
 }
 
-function Hero() {
-  return (
-    <div className="flex flex-col items-center text-center">
-      <div className="mb-6 inline-flex items-center rounded-full bg-white px-3 py-1 text-[11px] font-medium text-neutral-900 md:mb-8 md:px-4 md:py-1.5 md:text-xs">
-        Invite-only roster
-      </div>
+// ---------------------------------------------------------------------------
+// Hero — sky card mirroring the company home page, with the freelancer's
+// side of the conversation: a fitting brief lands in the inbox.
+// ---------------------------------------------------------------------------
+const HERO_SUBJECT = "New brief from Howdy: 90-sec hero film, ~$3K, 2 weeks";
 
-      <h1 className="text-balance text-3xl font-normal leading-[1.1] tracking-tight md:text-5xl lg:text-[4.25rem]">
-        Your Talent Needs
-        <br />
-        to be Discovered.
-      </h1>
-
-      <p className="mt-6 max-w-xl text-base text-white/70 md:mt-8 md:text-xl">
-        No applications. We find you, and the work finds you.
-      </p>
-
-      <div className="mt-6 md:mt-8">
-        <a
-          href={INVITE_MAILTO}
-          className="inline-flex h-12 items-center justify-center rounded-full border border-white/20 bg-white/10 px-7 text-sm font-medium text-white shadow-[0_8px_32px_rgba(0,0,0,0.25)] backdrop-blur-sm transition-colors hover:border-white/30 hover:bg-white/20 hover:text-white md:h-14 md:px-10 md:text-base"
-        >
-          Request an Invite
-        </a>
-      </div>
-    </div>
-  );
-}
-
-const PREVIEW_SUBJECT = "New brief from Howdy: 90-sec hero film, ~$3K, 2 weeks";
-
-const PREVIEW_MESSAGES: EmailMessage[] = [
+const HERO_MESSAGES: EmailMessage[] = [
   {
     from: "Howdy",
     email: "howdy@howdy.ai",
@@ -107,34 +85,82 @@ const PREVIEW_MESSAGES: EmailMessage[] = [
   },
 ];
 
-function BriefPreview() {
+function HeroCard() {
   return (
-    <EmailThread
-      subject={PREVIEW_SUBJECT}
-      messages={PREVIEW_MESSAGES}
-      currentStep={1}
-    />
+    <div
+      className="relative transform-gpu overflow-hidden rounded-[28px] [-webkit-mask-image:-webkit-radial-gradient(white,black)] md:rounded-[36px]"
+      style={{ isolation: "isolate" }}
+    >
+      <Image
+        src="/bg.jpg"
+        alt=""
+        fill
+        priority
+        sizes="(min-width: 1400px) 1400px, 100vw"
+        className="object-cover"
+        style={{ filter: "blur(1.5px)" }}
+      />
+      <div aria-hidden className="absolute inset-0 bg-black/20" />
+      <div className="relative flex flex-col items-center px-5 py-9 text-center md:px-8 md:py-11 lg:py-12">
+        <span className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/[0.12] px-4 py-1.5 text-xs font-medium text-white shadow-[0_4px_18px_rgba(0,0,0,0.18)] backdrop-blur-md">
+          <span className="relative flex size-2">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
+          </span>
+          Invite-only roster
+          <Sparkles className="size-3" />
+        </span>
+
+        <h1 className="mt-7 max-w-4xl text-balance text-3xl font-normal leading-[1.05] tracking-tight text-white md:mt-9 md:text-5xl lg:text-6xl">
+          Your Talent Needs
+          <br />
+          to be Discovered.
+        </h1>
+
+        <p className="mt-4 max-w-xl text-balance text-sm leading-relaxed text-white/85 md:mt-5 md:text-base">
+          No applications, no bidding wars. We find you — and the right briefs
+          land straight in your inbox.
+        </p>
+
+        <div className="mt-6 md:mt-8">
+          <a
+            href={INVITE_MAILTO}
+            className="flex h-11 items-center gap-1 rounded-full border border-white/30 bg-white/15 pl-5 pr-1 text-sm font-medium text-white shadow-[0_10px_36px_rgba(0,0,0,0.2)] backdrop-blur-md transition-colors hover:border-white/40 hover:bg-white/25 hover:text-white md:h-13 md:pl-7 md:text-base"
+          >
+            <span>Request an Invite</span>
+            <span className="flex size-9 items-center justify-center rounded-full border border-white/25 bg-white/20 text-white backdrop-blur-md md:size-11">
+              <ArrowUpRight className="size-4 md:size-5" />
+            </span>
+          </a>
+        </div>
+
+        <div className="mt-8 w-full max-w-2xl text-left md:mt-10">
+          <EmailThread
+            subject={HERO_SUBJECT}
+            messages={HERO_MESSAGES}
+            currentStep={1}
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 
 function StatStrip() {
   return (
-    <div className="mt-12 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-white/70 md:text-base">
+    <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-zinc-600 md:text-base">
       <span>
-        <span className="font-medium text-white">Zero</span> bidding wars
+        <span className="font-medium text-zinc-900">Zero</span> bidding wars
       </span>
-      <span aria-hidden className="size-1 rounded-full bg-white/30" />
+      <span aria-hidden className="size-1 rounded-full bg-zinc-300" />
       <span>Briefs that actually fit</span>
-      <span aria-hidden className="size-1 rounded-full bg-white/30" />
+      <span aria-hidden className="size-1 rounded-full bg-zinc-300" />
       <span className="flex items-center gap-2">
         <span className="flex">
           {Array.from({ length: 5 }).map((_, i) => {
             if (i < 4) {
               return (
-                <Star
-                  key={i}
-                  className="size-3.5 fill-white text-white"
-                />
+                <Star key={i} className="size-3.5 fill-zinc-900 text-zinc-900" />
               );
             }
             return (
@@ -143,9 +169,9 @@ function StatStrip() {
                 aria-hidden
                 className="relative inline-block size-3.5"
               >
-                <Star className="absolute inset-0 size-3.5 text-white/40" />
+                <Star className="absolute inset-0 size-3.5 text-zinc-300" />
                 <Star
-                  className="absolute inset-0 size-3.5 fill-white text-white"
+                  className="absolute inset-0 size-3.5 fill-zinc-900 text-zinc-900"
                   style={{ clipPath: "inset(0 50% 0 0)" }}
                 />
               </span>
@@ -153,13 +179,17 @@ function StatStrip() {
           })}
         </span>
         <span>
-          <span className="font-medium text-white">4.7</span> freelancer rating
+          <span className="font-medium text-zinc-900">4.7</span> freelancer
+          rating
         </span>
       </span>
     </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// How it works — light stacked steps, alternating with the brief thread.
+// ---------------------------------------------------------------------------
 const STEPS = [
   {
     title: "We find you",
@@ -187,7 +217,7 @@ function HowItWorks() {
   return (
     <section className="mx-auto w-full max-w-5xl px-4 py-16 sm:px-6 md:py-24 lg:py-32">
       <div className="mb-10 text-center md:mb-14">
-        <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-white/50 md:text-xs">
+        <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500 md:text-xs">
           How it works
         </p>
         <h2 className="text-balance text-2xl leading-tight tracking-tight md:text-4xl lg:text-5xl">
@@ -199,15 +229,15 @@ function HowItWorks() {
         {STEPS.map((step, i) => (
           <li
             key={step.title}
-            className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-md md:p-8"
+            className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6 md:p-8"
           >
-            <span className="text-xs font-medium uppercase tracking-[0.2em] text-white/40 md:text-sm">
+            <span className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-400 md:text-sm">
               Step 0{i + 1}
             </span>
             <h3 className="mt-3 text-balance text-xl leading-tight tracking-tight md:text-2xl">
               {step.title}
             </h3>
-            <p className="mt-3 text-base text-white/70 md:text-lg">
+            <p className="mt-3 text-base text-zinc-600 md:text-lg">
               {step.description}
             </p>
           </li>
@@ -217,77 +247,80 @@ function HowItWorks() {
   );
 }
 
-const DIFF_ROWS = [
-  {
-    feature: "Your time, back",
-    howdy: "Briefs come to you, pre-qualified",
-    others: "Hours bidding on jobs you won't win",
-  },
-  {
-    feature: "Keep what you earn",
-    howdy: "Zero platform fees on the work",
-    others: "10–20% taken off every invoice",
-  },
-  {
-    feature: "Fit, not keywords",
-    howdy: "Matched on taste, craft, and rate",
-    others: "Drowned out by lowest bidder",
-  },
-  {
-    feature: "Real relationships",
-    howdy: "Direct intro to the hiring team",
-    others: "Walled-garden chat, no contact info",
-  },
+// ---------------------------------------------------------------------------
+// Differentiation — two-card layout mirroring the company page.
+// ---------------------------------------------------------------------------
+const OTHERS = [
+  "Hours bidding on jobs you won't win",
+  "10–20% taken off every invoice",
+  "Drowned out by the lowest bidder",
+  "Walled-garden chat, no contact info",
+];
+
+const HOWDY = [
+  "Briefs come to you, pre-qualified",
+  "Zero platform fees on the work",
+  "Matched on taste, craft, and rate",
+  "Direct intro to the hiring team",
 ];
 
 function Differentiation() {
   return (
-    <section className="mx-auto w-full max-w-5xl px-4 py-16 sm:px-6 md:py-24 lg:py-32">
-      <div className="mb-8 text-center md:mb-12">
-        <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-white/50 md:mb-4 md:text-xs">
+    <section className="relative mx-auto w-full max-w-4xl px-4 py-16 sm:px-6 md:py-24 lg:py-32">
+      <pre
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/2 -z-10 -translate-x-1/2 -translate-y-1/2 select-none font-mono text-[10px] leading-[9px] text-zinc-400/70 md:text-[20px] md:leading-[17px]"
+      >
+        {CAT_ASCII}
+      </pre>
+      <div className="mb-8 text-center md:mb-14">
+        <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500 md:mb-4 md:text-xs">
           Why Howdy
         </p>
         <h2 className="text-balance text-2xl leading-tight tracking-tight md:text-4xl lg:text-5xl">
           What changes when you join the roster
         </h2>
-        <p className="mx-auto mt-4 max-w-2xl text-balance text-sm text-white/60 md:mt-6 md:text-lg">
-          No bidding, no fees on the work, no algorithm to game.
-        </p>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md">
-        <div className="grid grid-cols-[1.2fr_1fr_1fr] items-center border-b border-white/10 md:grid-cols-[1.4fr_1fr_1fr]">
-          <div className="px-3 py-3 text-[10px] font-medium uppercase tracking-[0.14em] text-white/50 md:px-5 md:py-4 md:text-xs">
-            What you get
-          </div>
-          <div className="border-l border-white/10 bg-white/10 px-3 py-3 text-center text-sm font-medium md:px-5 md:py-4 md:text-base">
-            Howdy
-          </div>
-          <div className="border-l border-white/10 px-3 py-3 text-center text-[11px] text-white/60 md:px-5 md:py-4 md:text-sm">
-            Other Portals
-          </div>
+      <div className="grid gap-4 md:grid-cols-2 md:gap-6">
+        {/* Freelancing elsewhere — muted */}
+        <div className="rounded-3xl border border-zinc-200 bg-zinc-50 p-6 md:p-8">
+          <p className="text-sm font-medium text-zinc-400 md:text-base">
+            Freelancing elsewhere
+          </p>
+          <ul className="mt-5 space-y-4 md:mt-6">
+            {OTHERS.map((line) => (
+              <li key={line} className="flex items-start gap-3">
+                <X className="mt-0.5 size-4 shrink-0 text-zinc-300 md:size-5" />
+                <span className="text-sm text-zinc-500 md:text-base">
+                  {line}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
 
-        {DIFF_ROWS.map((row, i) => (
-          <div
-            key={row.feature}
-            className={`grid grid-cols-[1.2fr_1fr_1fr] items-stretch md:grid-cols-[1.4fr_1fr_1fr] ${
-              i < DIFF_ROWS.length - 1 ? "border-b border-white/10" : ""
-            }`}
-          >
-            <div className="px-3 py-3 text-sm font-medium md:px-5 md:py-5 md:text-base">
-              {row.feature}
-            </div>
-            <div className="flex items-center gap-1.5 border-l border-white/10 bg-white/10 px-3 py-3 text-xs md:gap-2 md:px-5 md:py-5 md:text-sm">
-              <Check className="size-3.5 shrink-0 text-emerald-400 md:size-4" />
-              <span>{row.howdy}</span>
-            </div>
-            <div className="flex items-center gap-1.5 border-l border-white/10 px-3 py-3 text-xs text-white/60 md:gap-2 md:px-5 md:py-5 md:text-sm">
-              <X className="size-3.5 shrink-0 text-white/30 md:size-4" />
-              <span>{row.others}</span>
-            </div>
-          </div>
-        ))}
+        {/* On the Howdy roster — elevated charcoal */}
+        <div className="rounded-3xl bg-zinc-900 p-6 shadow-[0_24px_60px_rgba(0,0,0,0.18)] md:p-8">
+          <p className="flex items-center gap-2 text-sm font-medium text-white md:text-base">
+            <Image
+              src="/howdy-logo.png"
+              alt=""
+              width={24}
+              height={24}
+              className="size-5 shrink-0 invert mix-blend-screen md:size-6"
+            />
+            On the Howdy roster
+          </p>
+          <ul className="mt-5 space-y-4 md:mt-6">
+            {HOWDY.map((line) => (
+              <li key={line} className="flex items-start gap-3">
+                <Check className="mt-0.5 size-4 shrink-0 text-emerald-400 md:size-5" />
+                <span className="text-sm text-white md:text-base">{line}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </section>
   );
@@ -296,7 +329,7 @@ function Differentiation() {
 function FinalCTA() {
   return (
     <section className="mx-auto w-full max-w-4xl px-4 py-16 text-center sm:px-6 md:py-24 lg:py-32">
-      <div className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[11px] font-medium text-white/80 backdrop-blur-sm md:px-4 md:py-1.5 md:text-xs">
+      <div className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[11px] font-medium text-zinc-700 backdrop-blur-sm md:px-4 md:py-1.5 md:text-xs">
         Invite-only
       </div>
 
@@ -304,16 +337,16 @@ function FinalCTA() {
         Think you should be <em>on the roster?</em>
       </h2>
 
-      <p className="mx-auto mt-4 max-w-2xl text-balance text-sm text-white/70 md:mt-6 md:text-lg">
-        We&apos;re keeping the network small on purpose. If your work speaks
-        for itself, send a quick note with a link to your portfolio and
-        we&apos;ll take a look.
+      <p className="mx-auto mt-4 max-w-2xl text-balance text-sm text-zinc-600 md:mt-6 md:text-lg">
+        We&apos;re keeping the network small on purpose. If your work speaks for
+        itself, send a quick note with a link to your portfolio and we&apos;ll
+        take a look.
       </p>
 
       <div className="mt-8 md:mt-10">
         <a
           href={INVITE_MAILTO}
-          className="inline-flex h-12 items-center justify-center rounded-full bg-white px-8 text-sm font-medium text-neutral-900 shadow-[0_8px_32px_rgba(0,0,0,0.25)] transition-colors hover:bg-white/90 md:h-14 md:px-10 md:text-base"
+          className="inline-flex h-12 items-center justify-center rounded-full bg-zinc-950 px-8 text-sm font-medium text-white shadow-[0_8px_32px_rgba(0,0,0,0.18)] transition-colors hover:bg-zinc-800 md:h-14 md:px-10 md:text-base"
         >
           Request an Invite
         </a>
@@ -351,9 +384,15 @@ const FAQS = [
 
 function FAQ() {
   return (
-    <section className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6 md:py-24 lg:py-32">
+    <section className="relative mx-auto w-full max-w-3xl overflow-hidden px-4 py-16 sm:px-6 md:overflow-visible md:py-24 lg:py-32">
+      <pre
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/2 -z-10 -translate-x-1/2 -translate-y-1/2 select-none font-mono text-[7px] leading-[6px] text-zinc-400/70 md:text-[20px] md:leading-[18px]"
+      >
+        {BLOB_ASCII}
+      </pre>
       <div className="mb-8 text-center md:mb-12">
-        <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-white/50 md:mb-4 md:text-xs">
+        <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500 md:mb-4 md:text-xs">
           FAQ
         </p>
         <h2 className="text-balance text-2xl leading-tight tracking-tight md:text-4xl lg:text-5xl">
@@ -370,20 +409,14 @@ function FAQ() {
   );
 }
 
-function FAQItem({
-  question,
-  answer,
-}: {
-  question: string;
-  answer: string;
-}) {
+function FAQItem({ question, answer }: { question: string; answer: string }) {
   return (
-    <details className="group rounded-xl border border-white/15 bg-white/5 px-6 py-4 backdrop-blur-md transition-colors open:bg-white/10">
+    <details className="group rounded-xl border border-zinc-200 bg-zinc-50 px-6 py-4 backdrop-blur-md transition-colors open:bg-zinc-100">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden">
         <span className="text-base font-medium md:text-lg">{question}</span>
-        <ChevronDown className="size-5 shrink-0 text-white/60 transition-transform group-open:rotate-180" />
+        <ChevronDown className="size-5 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
       </summary>
-      <p className="mt-3 text-sm text-white/70 md:text-base">{answer}</p>
+      <p className="mt-3 text-sm text-zinc-600 md:text-base">{answer}</p>
     </details>
   );
 }
