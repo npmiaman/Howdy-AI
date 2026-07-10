@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 
+import { getEmbeddingModel } from "./llm";
 import type { Freelancer } from "./types";
 
 let cache: Freelancer[] | null = null;
@@ -40,9 +41,60 @@ export async function getFreelancersByIds(
 export function freelancerToEmbeddingText(f: Freelancer): string {
   return [
     f.role,
-    `Skills: ${f.skills.join(", ")}.`,
-    `Specialties: ${f.specialties.join(", ")}.`,
+    `Skills: ${(f.skills ?? []).join(", ")}.`,
+    `Specialties: ${(f.specialties ?? []).join(", ")}.`,
     f.bio,
     f.portfolio_summary,
-  ].join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+// pgvector accepts its text input as "[1,2,3]".
+function toVectorLiteral(vec: number[]): string {
+  return `[${vec.join(",")}]`;
+}
+
+/**
+ * Self-healing embeddings. Finds every freelancer missing an `embedding` and
+ * writes one (Gemini). Idempotent and cheap when nothing is missing — this is
+ * the guard that keeps a freelancer imported without an embedding (e.g. from a
+ * CSV upload) from silently breaking matching. Run on a schedule via the cron.
+ */
+export async function ensureFreelancerEmbeddings(
+  batchLimit = 500,
+): Promise<{ embedded: number; failed: number; missing: number }> {
+  if (!isSupabaseConfigured()) return { embedded: 0, failed: 0, missing: 0 };
+  const sb = getSupabaseAdmin();
+  const { data, error } = await sb
+    .from("freelancers")
+    .select(FREELANCER_COLS)
+    .is("embedding", null)
+    .limit(batchLimit);
+  if (error) throw error;
+  const rows = (data ?? []) as unknown as Freelancer[];
+  if (rows.length === 0) return { embedded: 0, failed: 0, missing: 0 };
+
+  const vectors = await getEmbeddingModel().embedDocuments(
+    rows.map(freelancerToEmbeddingText),
+  );
+
+  let embedded = 0;
+  let failed = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const { error: upErr } = await sb
+      .from("freelancers")
+      .update({ embedding: toVectorLiteral(vectors[i]) })
+      .eq("id", rows[i].id);
+    if (upErr) {
+      failed += 1;
+      console.error(
+        `[embeddings] failed for ${rows[i].id}:`,
+        upErr.message,
+      );
+    } else {
+      embedded += 1;
+    }
+  }
+  return { embedded, failed, missing: rows.length };
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { ensureFreelancerEmbeddings } from "@/lib/howdy/data";
 import {
   deliverFallbackShortlist,
   sendDueConnects,
@@ -49,6 +50,22 @@ export async function GET(request: Request) {
   }
 
   const results: Array<{ step: string; id?: string; detail?: string }> = [];
+
+  // ---- 0a. Self-heal freelancer embeddings. Any freelancer imported without
+  //          one (e.g. a CSV upload) gets embedded now, so matching can never
+  //          silently break on a missing vector. Cheap no-op when all present.
+  try {
+    const { embedded, failed } = await ensureFreelancerEmbeddings();
+    if (embedded > 0 || failed > 0)
+      results.push({
+        step: "embedded_freelancers",
+        detail: `${embedded} embedded, ${failed} failed`,
+      });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("[process-pending] ensureFreelancerEmbeddings:", detail);
+    results.push({ step: "error_embeddings", detail });
+  }
 
   // ---- 0. Hard 24h fallback FIRST. Any request nearing 24h without a
   //         delivered shortlist gets DB-ranked matches sent now, and is marked
