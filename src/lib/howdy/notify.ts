@@ -7,7 +7,14 @@
 import { sendFreshEmail } from "@/lib/agentmail/client";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 
-const NOTIFY_TO = process.env.HOWDY_NOTIFY_EMAIL || "amanpandit124421@gmail.com";
+// Ops inbox(es) to alert. Override with a comma-separated HOWDY_NOTIFY_EMAIL.
+const NOTIFY_LIST = (
+  process.env.HOWDY_NOTIFY_EMAIL ||
+  "amanpandit124421@gmail.com,tanashley37@gmail.com,limbernice@bridgecreativesagency.com"
+)
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 /**
  * Fire a "1 new client / 1 new freelancer" alert for an inbound message.
@@ -68,7 +75,13 @@ export async function maybeNotifyInbound(args: {
       `— Howdy`,
     ].join("\n");
 
-    await sendFreshEmail({ to: NOTIFY_TO, subject, text });
+    if (NOTIFY_LIST.length === 0) return;
+    await sendFreshEmail({
+      to: NOTIFY_LIST[0],
+      cc: NOTIFY_LIST.slice(1),
+      subject,
+      text,
+    });
   } catch (err) {
     console.error("[notify] inbound notification failed:", err);
   }
