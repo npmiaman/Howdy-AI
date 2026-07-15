@@ -10,6 +10,7 @@ import { HireDialog } from "@/components/hire-dialog";
 import { HowItWorks } from "@/components/how-it-works";
 import { HomeChrome } from "@/components/home-chrome";
 import { MatchPreview } from "@/components/match-preview";
+import { Pricing } from "@/components/pricing";
 import { SiteFooter } from "@/components/site-footer";
 
 export default function Home() {
@@ -27,6 +28,7 @@ export default function Home() {
         </section>
         <HowItWorks />
         <Differentiation />
+        <Pricing />
         <FinalCTA />
         <FAQ />
         <SiteFooter />
