@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 
-import { freelancerToEmbeddingText, loadFreelancers } from "./data";
+import { freelancerToEmbeddingText, loadFreelancers, rateLabel } from "./data";
 import {
   cosineSimilarity,
   getChatModel,
@@ -209,7 +209,7 @@ Name: ${f.name}
 Role: ${f.role}
 Skills: ${f.skills.join(", ")}
 Specialties: ${f.specialties.join(", ")}
-Rate: $${f.rate_usd_per_hour}/hr
+Rate: ${rateLabel(f.rate_usd_per_hour)}
 Timezone: ${f.timezone}
 Availability: ${f.availability_hours_per_week} hrs/week
 Bio: ${f.bio}
@@ -278,7 +278,7 @@ Name: ${f.name}
 Role: ${f.role}
 Skills: ${f.skills.join(", ")}
 Specialties: ${f.specialties.join(", ")}
-Rate: $${f.rate_usd_per_hour}/hr
+Rate: ${rateLabel(f.rate_usd_per_hour)}
 Timezone: ${f.timezone}
 Bio: ${f.bio}
 Portfolio: ${f.portfolio_summary}

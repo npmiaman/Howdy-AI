@@ -8,6 +8,7 @@
 import { firstName } from "@/lib/utils";
 
 import { pricingNote } from "./billing";
+import { rateLabel } from "./data";
 import { generateText as write } from "./generate";
 import { type Brief, type Freelancer, PROMISE_HOURS } from "./types";
 
@@ -80,7 +81,7 @@ Name: ${args.freelancer.name}
 Role: ${args.freelancer.role}
 Skills: ${args.freelancer.skills.join(", ")}
 Specialties: ${args.freelancer.specialties.join(", ")}
-Rate: $${args.freelancer.rate_usd_per_hour}/hr
+Rate: ${rateLabel(args.freelancer.rate_usd_per_hour)}
 Timezone: ${args.freelancer.timezone}
 Bio: ${args.freelancer.bio}
 Portfolio: ${args.freelancer.portfolio_summary}
@@ -106,7 +107,7 @@ export async function clientShortlistEmail(args: {
         brief: args.brief,
         rationale: p.rationale,
       });
-      return `${i + 1}. ${p.freelancer.name} — ${p.freelancer.role}, $${p.freelancer.rate_usd_per_hour}/hr (${p.freelancer.timezone})\n${note}`;
+      return `${i + 1}. ${p.freelancer.name} — ${p.freelancer.role}, ${rateLabel(p.freelancer.rate_usd_per_hour)} (${p.freelancer.timezone})\n${note}`;
     }),
   );
 

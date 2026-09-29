@@ -39,6 +39,14 @@ export async function getFreelancersByIds(
     .filter((f): f is Freelancer => f !== undefined);
 }
 
+/**
+ * A freelancer's rate for emails and prompts. The roster has rows with no
+ * rate recorded (stored as 0) — never show a client "$0/hr".
+ */
+export function rateLabel(rate: number | null | undefined): string {
+  return rate && rate > 0 ? `$${rate}/hr` : "rate on request";
+}
+
 /** Freelancers by id, keyed for lookup. */
 export async function getFreelancerMap(
   ids: string[],
