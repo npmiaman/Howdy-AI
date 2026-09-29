@@ -26,13 +26,15 @@ function list(value: string | undefined, fallback: string): string[] {
     .filter(Boolean);
 }
 
-/** Every address that means "this email is to Howdy". */
+/**
+ * Every address that means "this email is to Howdy". (Deliberately not the
+ * legacy HOWDY_INBOX_EMAIL from the removed Gmail integration — a stale value
+ * there would make Howdy ignore a real person's mail as its own.)
+ */
 export function howdyAddresses(): string[] {
-  return [
-    ...list(process.env.HOWDY_INBOX_EMAIL, ""),
-    ...list(process.env.AGENTMAIL_INBOX_ID, ""),
-    "howdyai@agentmail.to",
-  ].filter((a) => a.includes("@"));
+  return [...list(process.env.AGENTMAIL_INBOX_ID, ""), "howdyai@agentmail.to"].filter(
+    (a) => a.includes("@"),
+  );
 }
 
 export function isTeamSender(email: string): boolean {
