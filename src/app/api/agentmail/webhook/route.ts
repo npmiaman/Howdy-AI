@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import {
   type AgentMailIncomingMessage,
   isAgentMailConfigured,
+  messageText,
   parseInboundPayload,
   replyToMessage,
 } from "@/lib/agentmail/client";
@@ -65,7 +66,8 @@ function alertOps(email: AgentMailIncomingMessage, subject: string, note: string
       email.cc.length ? `Cc: ${email.cc.join(", ")}` : null,
       `Re: ${email.subject || "(no subject)"}`,
       "",
-      email.body ? `"${email.body.slice(0, 400)}"` : "(no readable text — likely attachments only)",
+      email.body ? `"${email.body.slice(0, 400)}"` : "(no readable text)",
+      email.attachments.length ? `Attached: ${email.attachments.join(", ")}` : null,
       "",
       note,
       "— Howdy",
@@ -96,7 +98,7 @@ async function recordInbound(email: AgentMailIncomingMessage) {
   await appendMessage({
     threadId: thread.id,
     role: "human",
-    content: email.body,
+    content: messageText(email),
     gmailMessageId: email.messageId,
   });
   return thread;
@@ -374,7 +376,7 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
         thread,
         history,
         memories,
-        text: email.body,
+        text: messageText(email),
         inboundMessageId: email.messageId,
       });
       await markThreadProcessed(thread.id);
@@ -382,7 +384,7 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
     }
 
     const turn = await runHowdyTurn({
-      messages: history.length > 0 ? history : [new HumanMessage(email.body)],
+      messages: history.length > 0 ? history : [new HumanMessage(messageText(email))],
       brief: thread.brief,
       threadId: thread.id,
       userEmail: email.fromEmail,

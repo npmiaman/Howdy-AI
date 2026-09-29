@@ -128,6 +128,7 @@ export class FakeAgentMail {
     fromName?: string;
     extractedText?: string | null;
     html?: string;
+    attachments?: Array<{ filename: string; inline?: boolean }>;
   }) {
     const messageId = this.id("in");
     const threadId =
@@ -167,6 +168,7 @@ export class FakeAgentMail {
         text: args.text,
         extracted_text: args.extractedText === undefined ? args.text : args.extractedText,
         ...(args.html ? { html: args.html } : {}),
+        ...(args.attachments ? { attachments: args.attachments } : {}),
         timestamp: new Date().toISOString(),
       },
     };
