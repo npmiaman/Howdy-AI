@@ -74,7 +74,17 @@ scripts/                                      ← CLI helpers (roster import, ap
 
 **10. Billing (phase 1).** The shortlist email states the pricing as the website does; every intro that goes out is recorded in `billable_intros` ($50, `HOWDY_MATCH_FEE_USD`). Invoicing is manual: `npm run billing list` / `invoiced <id>`.
 
-**11. Daily digest.** Each morning (first cron run after 01:00 UTC) the team gets yesterday's funnel, conversations waiting on a human, requests stuck past 20h, what's owed, and AI budget used.
+**11. The agent's own abilities** (plan and evidence in `docs/agent-abilities.md`):
+- **Voice layer:** every AI-written message passes a voice guide adapted from [blader/humanizer](https://github.com/blader/humanizer) and a check by [brandonwise/humanizer](https://github.com/brandonwise/humanizer), both MIT. At most one rewrite, never losing a number or link. `HOWDY_VOICE=off` is the kill switch.
+- **Asking:** up to two related questions per email, in the client's own language.
+- **Attachments:** Howdy sees what was attached.
+- **Freelancers:** their questions are answered from the anonymised brief.
+- **Hand-over:** upset clients and payment, pricing or legal questions go to a person with a holding reply.
+- **Memory:** it remembers briefs and check-in outcomes.
+- **Progress:** it sends one progress note if recruiting runs past 8h.
+- **Anonymity:** a pitch that names the client falls back to fixed words.
+
+**12. Daily digest.** Each morning (first cron run after 01:00 UTC) the team gets yesterday's funnel, conversations waiting on a human, requests stuck past 20h, what's owed, and AI budget used.
 
 ### Safety switches
 
@@ -116,6 +126,7 @@ The fakes answer structured LLM calls with keyword heuristics (validated against
 | `npm run backup:db` / `mirror:backfill` | Local DB backup / backfill the mirror DB |
 | `npm run howdy` / `howdy:smoke` / `howdy:multi` | Talk to the agent locally |
 | `npm run howdy:reply-check` | Live check of the reply classifier against real Gemini |
+| `npm run howdy:voice-check` | Live before/after of the voice layer on real Howdy messages |
 | `npm run agentmail:inboxes` | List inboxes the API key can see |
 
 ## Going live

@@ -7,6 +7,7 @@ import {
   deliverFallbackShortlist,
   failRequest,
   sendDueConnects,
+  sendProgressNotes,
   startOutreach,
   sweepTimeouts,
 } from "@/lib/howdy/outreach";
@@ -183,6 +184,16 @@ export async function GET(request: Request) {
     const detail = errorMessage(err);
     console.error("[process-pending] sweepTimeouts:", detail);
     results.push({ step: "error_sweep", detail });
+  }
+
+  // ---- 2b. One honest progress note for requests recruiting 8h+. ----
+  if (!outOfTime()) try {
+    const { sent } = await sendProgressNotes();
+    if (sent > 0) results.push({ step: "progress_notes", detail: `${sent} sent` });
+  } catch (err) {
+    const detail = errorMessage(err);
+    console.error("[process-pending] sendProgressNotes:", detail);
+    results.push({ step: "error_progress", detail });
   }
 
   // ---- 3. Connect intros whose short delay has elapsed → then schedule

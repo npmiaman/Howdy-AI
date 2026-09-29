@@ -79,6 +79,8 @@ export type AgentMailIncomingMessage = {
   cc: string[];
   /** In-Reply-To + References: the ids of the messages this one answers. */
   replyToIds: string[];
+  /** Attachment filenames (inline signature images like image001.png left out). */
+  attachments: string[];
   subject: string;
   /** Body with quoted history removed if the platform provided it. */
   body: string;
@@ -138,6 +140,11 @@ export function parseInboundPayload(raw: any): AgentMailIncomingMessage {
     fromName,
     to,
     cc,
+    attachments: (Array.isArray(m.attachments) ? m.attachments : [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter((a: any) => a?.filename && !(a.inline && /^image\d*\.(png|jpe?g|gif)$/i.test(a.filename)))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((a: any) => String(a.filename)),
     replyToIds: [
       m.in_reply_to ?? m.inReplyTo,
       ...(Array.isArray(m.references) ? m.references : []),
@@ -164,6 +171,13 @@ function addressList(value: any): string[] {
     )
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
+}
+
+/** The message as Howdy stores and reads it: the text plus what was attached. */
+export function messageText(email: AgentMailIncomingMessage): string {
+  return email.attachments.length
+    ? `${email.body}\n\n[Attached: ${email.attachments.join(", ")}]`.trim()
+    : email.body;
 }
 
 function firstNonEmpty(values: unknown[]): string {

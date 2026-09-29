@@ -103,6 +103,8 @@ function heuristicAssessment(human: string) {
     fields,
     next_field: next?.field ?? null,
     next_question: next ? `Q:${next.field}?` : null,
+    needs_human: false,
+    human_reason: null,
   };
 }
 
@@ -144,7 +146,11 @@ function yesNo(text: string): "yes" | "no" | "unclear" {
 export const DEFAULT_HANDLERS: Record<string, Handler> = {
   brief: ({ human }) => heuristicBrief(human),
   assessment: ({ human }) => heuristicAssessment(human),
-  decision: ({ human }) => ({ decision: yesNo(lastReply(human, "Freelancer reply:")) }),
+  decision: ({ human }) => {
+    const reply = lastReply(human, "Freelancer reply:");
+    const d = yesNo(reply);
+    return { decision: d === "unclear" && reply.includes("?") ? "question" : d };
+  },
   yesno: ({ human }) => ({ answer: yesNo(lastReply(human, "Their reply:")) }),
   sentiment: ({ human }) => {
     const t = lastReply(human, "Their message:");
@@ -175,6 +181,8 @@ export const DEFAULT_HANDLERS: Record<string, Handler> = {
     const list = roster(human);
     const t = text.toLowerCase();
     const none = { reason: null, reply: null };
+    if (/\b(refund|lawyer|legal|contract|complain\w*|unacceptable|speak to (a )?(human|person|someone)|real person|pricing|fees?|invoice)\b/.test(t))
+      return { ...none, intent: "needs_human", chosen_freelancer_ids: [], reason: "raised " + text.trim().slice(0, 40) };
     if (/\b(anyone else|someone else|other options|more options|none of (these|them)|not a fit)\b/.test(t))
       return { ...none, intent: "more_options", chosen_freelancer_ids: [], reason: text.trim() };
     if (/\b(new project|another project|different project|also need)\b/.test(t))

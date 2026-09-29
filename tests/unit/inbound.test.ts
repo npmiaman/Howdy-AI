@@ -84,6 +84,7 @@ describe("classifyInbound", () => {
     to: ["howdyai@agentmail.to"],
     cc: [],
     replyToIds: [],
+    attachments: [],
     subject: "Need an editor",
     body: "I need a video editor",
     receivedAt: new Date(),
@@ -115,5 +116,29 @@ describe("classifyInbound", () => {
     expect(isJoinRequest("Request to join Howdy's freelancer roster")).toBe(true);
     expect(isJoinRequest("Re: Request to join Howdy's freelancer roster")).toBe(true);
     expect(isJoinRequest("Need a video editor")).toBe(false);
+  });
+});
+
+describe("attachments", () => {
+  it("keeps real attachments and drops inline signature logos", async () => {
+    const { parseInboundPayload, messageText } = await import("@/lib/agentmail/client");
+    const m = parseInboundPayload({
+      event_type: "message.received",
+      message: {
+        from: "dana@client.co",
+        to: ["howdyai@agentmail.to"],
+        thread_id: "t",
+        message_id: "m",
+        subject: "Brief",
+        extracted_text: "Here's the brief and our moodboard.",
+        attachments: [
+          { filename: "brief.pdf", inline: false },
+          { filename: "moodboard.png", inline: false },
+          { filename: "image001.png", inline: true },
+        ],
+      },
+    });
+    expect(m.attachments).toEqual(["brief.pdf", "moodboard.png"]);
+    expect(messageText(m)).toBe("Here's the brief and our moodboard.\n\n[Attached: brief.pdf, moodboard.png]");
   });
 });

@@ -1,6 +1,4 @@
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-
-import { getChatModel } from "./llm";
+import { generateText } from "./generate";
 import { loadMessages } from "./threads";
 import { loadMemories, memoriesAsContext } from "./memories";
 import type { Brief } from "./types";
@@ -40,11 +38,9 @@ export async function composeWelcomeBack(args: {
 
   const memoryBlock = memoriesAsContext(memories);
 
-  const llm = getChatModel();
-  const reply = await llm.invoke([
-    new SystemMessage(WELCOME_BACK_SYSTEM_PROMPT),
-    new HumanMessage(
-      `Hirer's name: ${firstName} (full: ${args.fullName})
+  return generateText(
+    WELCOME_BACK_SYSTEM_PROMPT,
+    `Hirer's name: ${firstName} (full: ${args.fullName})
 
 ${memoryBlock ? memoryBlock + "\n\n" : ""}Brief from the previous conversation (may be partial):
 ${JSON.stringify(args.brief ?? {}, null, 2)}
@@ -55,12 +51,5 @@ ${transcript || "(none)"}
 A match has already been delivered: ${args.hadMatch ? "yes" : "no"}.
 
 Write the welcome-back reply.`,
-    ),
-  ]);
-
-  const text =
-    typeof reply.content === "string"
-      ? reply.content.trim()
-      : JSON.stringify(reply.content);
-  return text;
+  );
 }

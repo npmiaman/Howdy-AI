@@ -40,7 +40,7 @@ function endSession() {
 const OPENING: ChatMessage = {
   role: "assistant",
   content:
-    "Hey, I'm Howdy. Tell me what you're making and the creative you need — I'll start digging.",
+    "Hey, I'm Howdy. Tell me what you're making and the creative you need, and I'll start digging.",
 };
 
 export function HowdyChatWidget() {
@@ -106,7 +106,7 @@ export function HowdyChatWidget() {
     };
     if (!res.ok || !data.reply) {
       throw new Error(
-        data.error ?? (contact ? "Couldn't send that — mind trying again?" : "Howdy is unreachable."),
+        data.error ?? (contact ? "Couldn't send that. Mind trying again?" : "Howdy is unreachable."),
       );
     }
     return { reply: data.reply, done: data.done, needsContact: data.needsContact };
@@ -337,7 +337,7 @@ export function HowdyChatWidget() {
                 disabled={locked}
                 placeholder={
                   done
-                    ? "Brief sent — check your inbox"
+                    ? "Brief sent. Check your inbox"
                     : pending
                       ? "Howdy is thinking…"
                       : showContactForm

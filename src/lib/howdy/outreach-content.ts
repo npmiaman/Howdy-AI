@@ -14,7 +14,7 @@ import { type Brief, type Freelancer, PROMISE_HOURS } from "./types";
 
 
 /** What a freelancer is allowed to see before they accept — NO client identity. */
-function anonymizedBrief(brief: Brief): string {
+export function anonymizedBrief(brief: Brief): string {
   const lines: string[] = [];
   if (brief.role) lines.push(`Role: ${brief.role}`);
   if (brief.description)
@@ -107,7 +107,7 @@ export async function clientShortlistEmail(args: {
         brief: args.brief,
         rationale: p.rationale,
       });
-      return `${i + 1}. ${p.freelancer.name} — ${p.freelancer.role}, ${rateLabel(p.freelancer.rate_usd_per_hour)} (${p.freelancer.timezone})\n${note}`;
+      return `${i + 1}. ${p.freelancer.name}, ${p.freelancer.role} (${rateLabel(p.freelancer.rate_usd_per_hour)}, ${p.freelancer.timezone})\n${note}`;
     }),
   );
 
@@ -117,12 +117,12 @@ export async function clientShortlistEmail(args: {
     // Honest: strong matches, availability not yet confirmed.
     intro = `Here ${count === 1 ? "is" : "are"} the ${count === 1 ? "strongest match" : `top ${count} matches`} from our network for your brief. I'm confirming their availability now, but wanted to get ${count === 1 ? "them" : "these"} in front of you rather than keep you waiting:`;
   } else if (args.fewerThanTarget) {
-    intro = `Good news — I've lined up ${count} creative${count === 1 ? "" : "s"} who ${count === 1 ? "is" : "are"} confirmed available and keen. I'm still scouting for more, but didn't want to hold these up:`;
+    intro = `Good news: I've lined up ${count} creative${count === 1 ? "" : "s"} who ${count === 1 ? "is" : "are"} confirmed available and keen. I'm still scouting for more, but didn't want to hold these up:`;
   } else {
-    intro = `Good news — I've lined up 3 creatives who are confirmed available and genuinely keen on your project:`;
+    intro = `Good news: I've lined up 3 creatives who are confirmed available and genuinely keen on your project:`;
   }
 
-  const outro = `Reply with the name(s) you'd like to connect with — one or more is totally fine — and I'll make the intro.\n\n${pricingNote()}`;
+  const outro = `Reply with the name(s) you'd like to meet (one or more is fine) and I'll make the intro.\n\n${pricingNote()}`;
 
   return `${intro}\n\n${notes.join("\n\n")}\n\n${outro}`;
 }
@@ -147,30 +147,44 @@ Write the intro email.`,
   );
 }
 
+const FREELANCER_QA_SYSTEM = `You are Howdy, answering a freelancer's question about a gig you just offered them. Use ONLY the anonymised brief below. Never reveal or guess the client's name, company or identity. If the brief doesn't answer the question, say so plainly and that you'll share the full details once they're in. One to three short sentences. Don't ask whether they're available; that line is added after your answer.`;
+
+/** Answer a freelancer's question from the anonymised brief, then ask for their yes/no. */
+export async function answerFreelancerQuestion(args: {
+  brief: Brief;
+  question: string;
+}): Promise<string> {
+  const answer = await write(
+    FREELANCER_QA_SYSTEM,
+    `Anonymised brief:\n${anonymizedBrief(args.brief)}\n\nTheir question:\n${args.question}`,
+  );
+  return `${answer}\n\nAre you open to it? A quick yes or no works.`;
+}
+
 // ------------------------------------------------ transactional templates
 // Fixed copy (no LLM) for messages whose wording carries a promise — each one
 // describes exactly what the code does next.
 
 /** A freelancer said yes to an invite (still anonymized — no booking promised). */
 export function freelancerAcceptAck(freelancer: Freelancer): string {
-  return `Thanks ${firstName(freelancer.name)} — noted! If the client picks you, I'll be in touch to connect you directly.`;
+  return `Thanks ${firstName(freelancer.name)}, noted. If the client picks you, I'll connect you directly.`;
 }
 
 /** Heads-up to a confirmed freelancer that the client picked them. */
 export function connectNotice(freelancer: Freelancer): string {
-  return `Good news, ${firstName(freelancer.name)} — the client picked you! I'm sending an intro email to you both shortly.`;
+  return `Good news, ${firstName(freelancer.name)}: the client picked you. I'm sending an intro email to you both shortly.`;
 }
 
 /** Client picked a freelancer who hasn't confirmed yet: ask for their yes. */
 export function chosenNudge(freelancer: Freelancer): string {
   const first = firstName(freelancer.name);
-  return `Hey ${first} — good news: the client would love to work with you on this one. Still up for it? A quick yes and I'll make the intro.`;
+  return `Hey ${first}, good news: the client would love to work with you on this one. Still up for it? A quick yes and I'll make the intro.`;
 }
 
 /** A chosen freelancer turned it down after the client picked them. */
 export function chosenUnavailableNotice(freelancer: Freelancer): string {
   const first = firstName(freelancer.name);
-  return `Quick update — ${first} can't take this one on after all. Reply with another name from the shortlist, or say "anyone else" and I'll line up fresh people.`;
+  return `Quick update: ${first} can't take this one on after all. Reply with another name from the shortlist, or say "anyone else" and I'll line up fresh people.`;
 }
 
 /** The client's acknowledgement after they pick from the shortlist. */
@@ -183,7 +197,7 @@ export function selectionAck(args: {
   const parts: string[] = [];
   if (args.confirmed.length)
     parts.push(
-      `Perfect — connecting you with ${names(args.confirmed)} now. The intro will land in your inbox shortly.`,
+      `Perfect, connecting you with ${names(args.confirmed)} now. The intro will land in your inbox shortly.`,
     );
   if (args.pending.length)
     parts.push(
@@ -192,9 +206,42 @@ export function selectionAck(args: {
   return parts.join(" ");
 }
 
+/**
+ * A pitch in fixed words, used when the written one might reveal the client.
+ * Deliberately leaves out the project description (it can carry a name).
+ */
+export function templatePitch(freelancer: Freelancer, brief: Brief): string {
+  const facts = [
+    brief.domain ? `It's in ${brief.domain}` : "",
+    brief.deadline ? `the timeline is ${brief.deadline}` : "",
+    brief.budget_usd_per_hour_max ? `budget is up to $${brief.budget_usd_per_hour_max}/hr` : "",
+  ].filter(Boolean);
+  return [
+    `Hi ${firstName(freelancer.name)}, quick one: are you open to a ${brief.role ?? "creative"} gig?`,
+    facts.length ? `${facts.join(", ")}.` : "",
+    brief.references?.length ? `The style they like: ${brief.references.join(", ")}.` : "",
+    "Reply yes or no. A yes means I'll share the full details and connect you.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** One honest update while recruiting runs long. */
+export function progressNote(confirmed: number, hours: number): string {
+  const wait = `Your shortlist will reach you within ${hours} hour${hours === 1 ? "" : "s"}.`;
+  return confirmed > 0
+    ? `Quick update: ${confirmed} of the creatives I reached out to ${confirmed === 1 ? "has" : "have"} confirmed so far, and I'm waiting on one or two more. ${wait}`
+    : `Quick update: I'm still lining people up for you. ${wait}`;
+}
+
+/** Holding reply when a conversation is handed to a person on the team. */
+export function humanHandoverNotice(): string {
+  return "That one's for my teammate, so I've looped them in. They'll reply here soon.";
+}
+
 /** A rematch search has been queued. */
 export function rematchStartedNotice(): string {
-  return `On it — I'll line up fresh people (nobody you've already seen) and send them over within ${PROMISE_HOURS} hours.`;
+  return `On it. I'll line up fresh people (nobody you've already seen) and send them over within ${PROMISE_HOURS} hours.`;
 }
 
 /** No one in the network fits (or everyone who does has been tried). */

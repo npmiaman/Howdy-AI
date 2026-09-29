@@ -535,3 +535,29 @@ describe("silent sign-ups", () => {
     expect(fakeMail.to("quiet@lead.co")).toHaveLength(1);
   });
 });
+
+describe("attachments", () => {
+  it("the agent sees what a client attached", async () => {
+    roster(3);
+    await signup({ fullName: "Dana Client", email: CLIENT });
+    await postWebhook(
+      fakeMail.inbound({
+        from: CLIENT,
+        text: "I need a video editor, brief attached.",
+        replyTo: fakeMail.last(CLIENT),
+        attachments: [{ filename: "brief.pdf" }, { filename: "refs.png" }],
+      }),
+    );
+    const stored = table("messages").find((m) => m.role === "human")!;
+    expect(stored.content).toMatch(/\[Attached: brief\.pdf, refs\.png\]/);
+    expect(fakeLLM.callsTo("brief").at(-1)!.human).toMatch(/\[Attached: brief\.pdf, refs\.png\]/);
+  });
+
+  it("an attachment-only email goes to the team, with the filenames", async () => {
+    const res = await postWebhook(
+      fakeMail.inbound({ from: CLIENT, subject: "files", text: "", extractedText: "", attachments: [{ filename: "deck.pdf" }] }),
+    );
+    expect(res.body.action).toBe("empty_body");
+    expect(fakeMail.last("amanpandit124421@gmail.com")?.text).toMatch(/Attached: deck\.pdf/);
+  });
+});

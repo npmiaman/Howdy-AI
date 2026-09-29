@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import {
   type AgentMailIncomingMessage,
   isAgentMailConfigured,
+  messageText,
   parseInboundPayload,
   replyToMessage,
 } from "@/lib/agentmail/client";
@@ -23,6 +24,7 @@ import {
   classifyFreelancerReply,
   handleFreelancerDecision,
 } from "@/lib/howdy/outreach";
+import { answerFreelancerQuestion } from "@/lib/howdy/outreach-content";
 import {
   findCheckinByMessageIds,
   findCheckinByThread,
@@ -38,7 +40,7 @@ import {
 } from "@/lib/howdy/threads";
 import { hitRateLimit, LIMITS, spendAiTurn } from "@/lib/howdy/rate-limit";
 import { isStopRequest, suppress, suppressedAmong, unsuppress } from "@/lib/howdy/suppression";
-import { humanIsHandling, takeoverLink } from "@/lib/howdy/takeover";
+import { humanIsHandling, setPaused, takeoverLink } from "@/lib/howdy/takeover";
 import { verifyWebhook } from "@/lib/howdy/webhook-auth";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 import { errorMessage, firstName, SITE_URL } from "@/lib/utils";
@@ -64,7 +66,8 @@ function alertOps(email: AgentMailIncomingMessage, subject: string, note: string
       email.cc.length ? `Cc: ${email.cc.join(", ")}` : null,
       `Re: ${email.subject || "(no subject)"}`,
       "",
-      email.body ? `"${email.body.slice(0, 400)}"` : "(no readable text — likely attachments only)",
+      email.body ? `"${email.body.slice(0, 400)}"` : "(no readable text)",
+      email.attachments.length ? `Attached: ${email.attachments.join(", ")}` : null,
       "",
       note,
       "— Howdy",
@@ -95,7 +98,7 @@ async function recordInbound(email: AgentMailIncomingMessage) {
   await appendMessage({
     threadId: thread.id,
     role: "human",
-    content: email.body,
+    content: messageText(email),
     gmailMessageId: email.messageId,
   });
   return thread;
@@ -250,7 +253,7 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
       }
       await replyToMessage({
         messageId: email.messageId,
-        text: "Done — you won't get any more emails from Howdy. If that was a mistake, just reply and I'll pick things back up.",
+        text: "Done. You won't get any more emails from Howdy. If that was a mistake, just reply and I'll pick things back up.",
       });
       return ok("unsubscribed");
     }
@@ -277,12 +280,23 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
       const request = await getPendingById(candidate.requestId);
       if (!request) return ok("freelancer_orphaned");
       const decision = await classifyFreelancerReply(email.body);
+      if (decision === "question") {
+        await dispatch({
+          kind: "freelancer_question",
+          to: email.fromEmail,
+          subject: email.subject,
+          text: await answerFreelancerQuestion({ brief: request.brief, question: email.body }),
+          replyToMessageId: email.messageId,
+          threadId: thread.id,
+        });
+        return ok("freelancer_question");
+      }
       if (decision === "unclear") {
         await dispatch({
           kind: "freelancer_unclear",
           to: email.fromEmail,
           subject: email.subject,
-          text: "Just to confirm — are you open to this one? A quick yes or no works.",
+          text: "Just to confirm: are you open to this one? A quick yes or no works.",
           replyToMessageId: email.messageId,
           threadId: thread.id,
         });
@@ -320,7 +334,7 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
         text: [
           `Hey${hi}! Thanks for reaching out about joining Howdy's roster.`,
           "",
-          `We review every freelancer by hand. The fastest way in is the short application here: ${SITE_URL}/freelancers — it takes two minutes and goes straight to the team.`,
+          `We review every freelancer by hand. The fastest way in is the short application here: ${SITE_URL}/freelancers. It takes two minutes and goes straight to the team.`,
           "",
           "Howdy",
         ].join("\n"),
@@ -336,8 +350,8 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
         email,
         thread.id,
         applied
-          ? `Thanks${hi} — your application is with the team, and I've passed this note along too. If it's a fit, we'll email you.`
-          : `Thanks${hi} — noted. I've passed this along to the team.`,
+          ? `Thanks${hi}, your application is with the team, and I've passed this note along too. If it's a fit, we'll email you.`
+          : `Thanks${hi}, noted. I've passed this along to the team.`,
       );
       return ok(applied ? "freelancer_applicant" : "freelancer_inbound");
     }
@@ -362,7 +376,7 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
         thread,
         history,
         memories,
-        text: email.body,
+        text: messageText(email),
         inboundMessageId: email.messageId,
       });
       await markThreadProcessed(thread.id);
@@ -370,7 +384,7 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
     }
 
     const turn = await runHowdyTurn({
-      messages: history.length > 0 ? history : [new HumanMessage(email.body)],
+      messages: history.length > 0 ? history : [new HumanMessage(messageText(email))],
       brief: thread.brief,
       threadId: thread.id,
       userEmail: email.fromEmail,
@@ -379,10 +393,20 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
     });
 
     await saveBrief(thread.id, turn.brief);
-    // The agent's reply is either an immediate clarification or an "ack"
-    // when the brief gets scheduled. Send it now.
+    // The agent's reply is a clarification, an "ack" when the brief gets
+    // scheduled, or a holding message when a person should take over.
     await replyAndRecord(email, thread.id, turn.reply);
     await markThreadProcessed(thread.id);
+
+    if (turn.escalation) {
+      await setPaused(thread.id, true);
+      await alertOps(
+        email,
+        "🙋 Reply needed — Howdy handed this conversation to you",
+        `Why: ${turn.escalation}. Howdy told them a teammate will reply. To hand it back: ${takeoverLink(thread.id, "auto")}`,
+      );
+      return ok("escalated");
+    }
 
     return ok(turn.scheduled ? "scheduled_match" : "clarified", {
       scheduled: turn.scheduled

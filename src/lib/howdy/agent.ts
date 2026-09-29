@@ -1,21 +1,18 @@
-import {
-  AIMessage,
-  type BaseMessage,
-  HumanMessage,
-  SystemMessage,
-} from "@langchain/core/messages";
+import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 
 import { assessBrief } from "./assessor";
 import { rateLabel } from "./data";
 import { extractBrief } from "./extractor";
-import { getChatModel } from "./llm";
+import { generateText } from "./generate";
 import { findBestMatch } from "./matcher";
-import { memoriesAsContext } from "./memories";
+import { briefFacts, memoriesAsContext, remember } from "./memories";
 import {
   type PendingMatch,
   schedulePendingMatch,
 } from "./scheduler";
+import { humanHandoverNotice } from "./outreach-content";
+import { polish } from "./voice";
 import {
   type Brief,
   type BriefAssessment,
@@ -113,17 +110,15 @@ async function clarifyNode(
   // answer was vague). Emit that directly.
   const question = state.assessment?.nextQuestion?.trim();
   if (question) {
-    return { messages: [new AIMessage(question)] };
+    return { messages: [new AIMessage(await polish(question))] };
   }
 
   // Fallback: assessment produced no question (shouldn't happen on the clarify
   // route). Ask a focused question from the raw priority prompt.
   const memoryBlock = memoriesAsContext(state.memories);
-  const llm = getChatModel();
-  const reply = await llm.invoke([
-    new SystemMessage(CLARIFY_SYSTEM_PROMPT),
-    new HumanMessage(
-      `${memoryBlock ? memoryBlock + "\n\n" : ""}Conversation so far:
+  const text = await generateText(
+    CLARIFY_SYSTEM_PROMPT,
+    `${memoryBlock ? memoryBlock + "\n\n" : ""}Conversation so far:
 ${state.messages
   .map((m) => `${m.getType() === "human" ? "Hirer" : "Howdy"}: ${m.content}`)
   .join("\n")}
@@ -132,13 +127,8 @@ Current brief (extracted):
 ${JSON.stringify(state.brief, null, 2)}
 
 Ask the single highest-priority unanswered question. Don't repeat anything you've already asked, and don't ask anything that's in the memory context.`,
-    ),
-  ]);
-  const text =
-    typeof reply.content === "string"
-      ? reply.content
-      : JSON.stringify(reply.content);
-  return { messages: [new AIMessage(text.trim())] };
+  );
+  return { messages: [new AIMessage(text)] };
 }
 
 const ACK_SYSTEM_PROMPT = `You are Howdy, an AI freelancer-matching agent. The hirer has just given you enough info to find a match.
@@ -162,27 +152,27 @@ async function scheduleNode(
     subject: state.subject,
     brief: state.brief,
   });
+  if (state.userEmail) await remember(state.userEmail, briefFacts(state.brief));
 
-  const llm = getChatModel();
-  const reply = await llm.invoke([
-    new SystemMessage(ACK_SYSTEM_PROMPT),
-    new HumanMessage(
-      `Brief:\n${JSON.stringify(state.brief, null, 2)}\n\nWrite the acknowledgment reply.`,
-    ),
-  ]);
-  const text =
-    typeof reply.content === "string"
-      ? reply.content
-      : JSON.stringify(reply.content);
+  const text = await generateText(
+    ACK_SYSTEM_PROMPT,
+    `Brief:\n${JSON.stringify(state.brief, null, 2)}\n\nWrite the acknowledgment reply.`,
+  );
 
   return {
-    messages: [new AIMessage(text.trim())],
+    messages: [new AIMessage(text)],
     scheduled: pending,
   };
 }
 
+/** Hand the conversation to a person: a short holding reply, nothing else. */
+async function escalateNode(): Promise<Partial<HowdyStateType>> {
+  return { messages: [new AIMessage(humanHandoverNotice())] };
+}
+
 // Replies after a request exists are routed by client-replies.ts, not here.
-function decideRoute(state: HowdyStateType): "schedule" | "clarify" {
+function decideRoute(state: HowdyStateType): "schedule" | "clarify" | "escalate" {
+  if (state.assessment?.needsHuman) return "escalate";
   // Match once the required core of the brief is clear (see REQUIRED_FIELDS);
   // otherwise keep clarifying.
   return state.assessment?.allResolved ? "schedule" : "clarify";
@@ -192,13 +182,16 @@ const graph = new StateGraph(HowdyState)
   .addNode("extract", extractNode)
   .addNode("clarify", clarifyNode)
   .addNode("schedule", scheduleNode)
+  .addNode("escalate", escalateNode)
   .addEdge(START, "extract")
   .addConditionalEdges("extract", decideRoute, {
     schedule: "schedule",
     clarify: "clarify",
+    escalate: "escalate",
   })
   .addEdge("clarify", END)
-  .addEdge("schedule", END);
+  .addEdge("schedule", END)
+  .addEdge("escalate", END);
 
 export const howdyAgent = graph.compile();
 
@@ -215,6 +208,8 @@ export type AgentOutput = {
   reply: string;
   brief: Brief;
   scheduled: PendingMatch | null;
+  /** Set when a person should take over; the reply is a holding message. */
+  escalation: string | null;
 };
 
 export async function runHowdyTurn(input: AgentInput): Promise<AgentOutput> {
@@ -236,6 +231,9 @@ export async function runHowdyTurn(input: AgentInput): Promise<AgentOutput> {
     reply,
     brief: result.brief,
     scheduled: result.scheduled,
+    escalation: result.assessment?.needsHuman
+      ? (result.assessment.humanReason ?? "the conversation needs a person")
+      : null,
   };
 }
 
@@ -246,7 +244,7 @@ export async function runHowdyTurn(input: AgentInput): Promise<AgentOutput> {
 const PROPOSE_SYSTEM_PROMPT = `You are Howdy, sending the match reply you promised earlier.
 
 Rules:
-- Lead with "Got your match." then the freelancer's name in bold (use markdown).
+- Lead with the freelancer's name and why they fit, in plain text.
 - One short sentence covering: ex-company, years, key skill, hourly rate, availability.
 - One short sentence with the rationale (why this person fits the brief specifically).
 - One short closer with next step (e.g. "Reply with 'yes' and I'll send the intro.").
@@ -258,10 +256,9 @@ export async function composeMatchReply(args: {
   match: MatchResult;
 }): Promise<string> {
   const { freelancer: f, rationale, confidence } = args.match;
-  const llm = getChatModel();
-  const reply = await llm.invoke([
-    new SystemMessage(PROPOSE_SYSTEM_PROMPT),
-    new HumanMessage(`Brief:
+  return generateText(
+    PROPOSE_SYSTEM_PROMPT,
+    `Brief:
 ${JSON.stringify(args.brief, null, 2)}
 
 Freelancer:
@@ -276,11 +273,8 @@ Freelancer:
 Rationale: ${rationale}
 Confidence: ${confidence}
 
-Write the reply.`),
-  ]);
-  return typeof reply.content === "string"
-    ? reply.content.trim()
-    : JSON.stringify(reply.content);
+Write the reply.`,
+  );
 }
 
 /**

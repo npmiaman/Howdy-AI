@@ -210,6 +210,9 @@ export type BriefAssessment = {
   allResolved: boolean;
   nextField: keyof Brief | null;
   nextQuestion: string | null;
+  /** The conversation needs a person (upset, payment, legal, asks for a human). */
+  needsHuman: boolean;
+  humanReason: string | null;
 };
 
 // ---------------------------------------------------------------------------

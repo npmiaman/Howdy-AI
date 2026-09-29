@@ -3,6 +3,7 @@ import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
 import { getChatModel } from "./llm";
+import { HOWDY_VOICE } from "./voice";
 import {
   type Brief,
   type BriefAssessment,
@@ -39,8 +40,19 @@ const AssessmentResponseSchema = z.object({
     .string()
     .nullable()
     .describe(
-      "ONE sharp, friendly question for next_field. If the field is vague, reference what the hirer already said and push for the specific missing piece. null when nothing is left to ask.",
+      "A sharp, friendly question for next_field (and at most one naturally paired field). If the field is vague, reference what the hirer already said and push for the specific missing piece. null when nothing is left to ask.",
     ),
+  needs_human: z
+    .boolean()
+    .default(false)
+    .describe(
+      "true if a person on the team should take over: the hirer is upset or complaining, asks for a human, or raises payment, refunds, pricing or fees, contracts or legal terms, or asks for something a talent scout can't do.",
+    ),
+  human_reason: z
+    .string()
+    .nullable()
+    .default(null)
+    .describe("When needs_human is true: one short clause on why, for the team. Otherwise null."),
 });
 
 function fieldGuide(): string {
@@ -62,12 +74,15 @@ ${fieldGuide()}
 
 Then:
 - Set next_field to the HIGHEST-priority field whose status is "vague" or "missing". If none, set it to null.
-- Write next_question: ONE sharp, friendly question (like a smart human matchmaker texting, not a form). Under two sentences, no greeting or preamble.
+- Write next_question for next_field, like a smart human matchmaker, not a form. If the next open field pairs naturally with it (deadline and budget, or references and dealbreakers), cover both in one short message, never more than two. Offer simple example options when it helps ("closer to $30/hr or $80/hr?"). Under three sentences, no greeting or preamble.
   - If next_field is "vague": explicitly reference what the hirer already said and push for the specific missing piece. Example — they said budget is "reasonable" → "When you say reasonable, are we talking closer to $30/hr or $80/hr? Ballpark is fine."
   - If next_field is "missing": ask it fresh, grounded in their project.
 - Never re-ask a topic they've already answered clearly. Never ask about anything in the memory context.
+- Set needs_human (with human_reason) when a person on the team should take over: the hirer is upset or complaining, asks to speak to someone, or raises payment, refunds, pricing or fees, contracts or legal terms. Otherwise false.
 
-Return strict JSON matching the schema.`;
+Return strict JSON matching the schema.
+
+For next_question: ${HOWDY_VOICE}`;
 
 export async function assessBrief(
   messages: BaseMessage[],
@@ -133,5 +148,12 @@ export async function assessBrief(
         : (result.next_question ?? null);
   }
 
-  return { fields, allResolved, nextField, nextQuestion };
+  return {
+    fields,
+    allResolved,
+    nextField,
+    nextQuestion,
+    needsHuman: result.needs_human === true,
+    humanReason: result.human_reason ?? null,
+  };
 }
