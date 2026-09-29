@@ -32,6 +32,12 @@ agency thread it was only CC'd on — whose inbound bodies had parsed as empty.
   real. Intake replies still always send.
 - **Idempotency by claims:** every email-sending step claims its state change
   with a conditional update first; duplicate webhook deliveries are skipped.
+  Claims expire after 10 minutes so a run killed mid-step (Vercel's 60s limit)
+  can't strand a request.
+- **Fail fast on the model:** at most one retry per Gemini call and a 50s
+  webhook deadline that alerts ops. Open for the owner: which model to pin —
+  `gemini-flash-latest` → `gemini-3.8-flash` measured 17–55s per call, with
+  503s and a 429 quota error, on 2026-09-29.
 - **Webhook auth fails closed in production** (Svix signature required).
 - **Silent sign-ups:** one nudge at 48h, only for sign-ups under 14 days old
   (so enabling it never mails old leads).
