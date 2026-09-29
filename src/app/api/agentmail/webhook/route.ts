@@ -60,6 +60,16 @@ async function alreadyHandled(messageId: string): Promise<boolean> {
   return (data ?? []).length > 0;
 }
 
+/** Someone who applied to the roster (any status). False if the table is missing. */
+async function hasApplied(email: string): Promise<boolean> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("freelancer_applications")
+    .select("id")
+    .ilike("email", email)
+    .limit(1);
+  return !error && (data ?? []).length > 0;
+}
+
 async function isRosterFreelancer(email: string): Promise<boolean> {
   const { data } = await getSupabaseAdmin()
     .from("freelancers")
@@ -178,6 +188,8 @@ export async function POST(request: Request) {
       : ((await findCheckinByThread(email.threadId)) ??
         (await findOpenCheckinBySender({ email: email.fromEmail, subject: email.subject })));
     const joinRequest = !candidate && !checkin && isJoinRequest(email.subject);
+    const applicant =
+      !candidate && !checkin && !joinRequest && (await hasApplied(email.fromEmail));
 
     await maybeNotifyInbound({
       messageId: email.messageId,
@@ -185,7 +197,7 @@ export async function POST(request: Request) {
       subject: email.subject,
       body: email.body,
       isFreelancerThread:
-        candidate !== null || joinRequest || checkin?.party === "freelancer",
+        candidate !== null || joinRequest || applicant || checkin?.party === "freelancer",
     });
 
     // ------------------------------------------------------------------
@@ -239,9 +251,11 @@ export async function POST(request: Request) {
       await replyToMessage({ messageId: email.messageId, text });
       return ok("freelancer_application");
     }
-    if (await isRosterFreelancer(email.fromEmail)) {
+    if (applicant || (await isRosterFreelancer(email.fromEmail))) {
       const thread = await recordInbound(email);
-      const text = `Thanks${firstName ? ` ${firstName}` : ""} — noted. I've passed this along to the team.`;
+      const text = applicant
+        ? `Thanks${firstName ? ` ${firstName}` : ""} — your application is with the team, and I've passed this note along too. If it's a fit, we'll email you.`
+        : `Thanks${firstName ? ` ${firstName}` : ""} — noted. I've passed this along to the team.`;
       const sent = await replyToMessage({ messageId: email.messageId, text });
       await appendMessage({
         threadId: thread.id,
@@ -249,7 +263,7 @@ export async function POST(request: Request) {
         content: text,
         gmailMessageId: sent.messageId,
       });
-      return ok("freelancer_inbound");
+      return ok(applicant ? "freelancer_applicant" : "freelancer_inbound");
     }
 
     // ------------------------------------------------------------------
