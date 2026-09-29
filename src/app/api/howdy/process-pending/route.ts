@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { ensureFreelancerEmbeddings } from "@/lib/howdy/data";
+import { sendDailyDigest } from "@/lib/howdy/digest";
 import { sendLeadNudges } from "@/lib/howdy/nudges";
 import {
   deliverFallbackShortlist,
@@ -234,6 +235,15 @@ export async function GET(request: Request) {
     const detail = errorMessage(err);
     console.error("[process-pending] sendLeadNudges:", detail);
     results.push({ step: "error_nudges", detail });
+  }
+
+  // ---- 6. Once a day, the ops digest. ----
+  if (!outOfTime()) try {
+    if ((await sendDailyDigest()).sent) results.push({ step: "daily_digest" });
+  } catch (err) {
+    const detail = errorMessage(err);
+    console.error("[process-pending] sendDailyDigest:", detail);
+    results.push({ step: "error_digest", detail });
   }
 
   return NextResponse.json({ ok: true, steps: results.length, results });
