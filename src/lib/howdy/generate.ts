@@ -8,11 +8,14 @@ import { HOWDY_VOICE, polish } from "./voice";
  * polished so it doesn't read as AI (see voice.ts).
  */
 export async function generateText(system: string, user: string): Promise<string> {
+  // HOWDY_VOICE=off is the kill switch (and the "before" in voice-check).
+  const voiced = process.env.HOWDY_VOICE !== "off";
   const reply = await getChatModel().invoke([
-    new SystemMessage(`${system}\n\n${HOWDY_VOICE}`),
+    new SystemMessage(voiced ? `${system}\n\n${HOWDY_VOICE}` : system),
     new HumanMessage(user),
   ]);
-  return polish(
-    (typeof reply.content === "string" ? reply.content : JSON.stringify(reply.content)).trim(),
-  );
+  const text = (
+    typeof reply.content === "string" ? reply.content : JSON.stringify(reply.content)
+  ).trim();
+  return voiced ? polish(text) : text;
 }

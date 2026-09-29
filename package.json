@@ -11,6 +11,7 @@
     "howdy:smoke": "tsx scripts/howdy-smoketest.ts",
     "howdy:multi": "tsx scripts/howdy-multi-turn.ts",
     "howdy:reply-check": "tsx scripts/reply-intent-check.ts",
+    "howdy:voice-check": "tsx scripts/voice-check.ts",
     "eval:matching": "tsx scripts/eval-matching.ts",
     "howdy:distribution": "tsx scripts/scheduler-distribution.ts",
     "import:freelancers": "tsx scripts/import-freelancers-csv.ts",
