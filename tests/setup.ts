@@ -53,6 +53,8 @@ vi.mock("@/lib/howdy/llm", async (importOriginal) => {
 export const T0 = new Date("2026-09-29T10:00:00Z");
 
 beforeEach(() => {
+  // Dry-run logs every intended email; keep test output readable.
+  vi.spyOn(console, "log").mockImplementation(() => {});
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(T0);
   fakeDb.reset();
