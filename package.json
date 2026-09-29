@@ -16,7 +16,9 @@
     "agentmail:inboxes": "tsx scripts/agentmail-inboxes.ts",
     "howdy:listen": "tsx scripts/howdy-listen.ts",
     "backup:db": "node scripts/db-backup.cjs",
-    "mirror:backfill": "node scripts/mirror-backfill.cjs"
+    "mirror:backfill": "node scripts/mirror-backfill.cjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@langchain/core": "^1.1.44",
@@ -51,6 +53,7 @@
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }
