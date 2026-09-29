@@ -68,11 +68,16 @@ export async function getInboxId(): Promise<string> {
 }
 
 export type AgentMailIncomingMessage = {
+  /** e.g. "message.received"; null when the payload didn't say. */
+  eventType: string | null;
   messageId: string;
   threadId: string;
   fromEmail: string;
   fromName: string | null;
   toEmail: string;
+  /** Every address on To / Cc (lowercased), for "was Howdy addressed?" checks. */
+  to: string[];
+  cc: string[];
   subject: string;
   /** Body with quoted history removed if the platform provided it. */
   body: string;
@@ -103,20 +108,18 @@ export function parseInboundPayload(raw: any): AgentMailIncomingMessage {
       ? extractName(fromValue)
       : (fromValue.name ?? null);
 
-  const toValue = m.to ?? m.to_address ?? m.toAddress ?? "";
-  const toEmail = Array.isArray(toValue)
-    ? typeof toValue[0] === "string"
-      ? extractEmail(toValue[0])
-      : (toValue[0]?.email ?? "")
-    : typeof toValue === "string"
-      ? extractEmail(toValue)
-      : (toValue?.email ?? "");
+  const to = addressList(m.to ?? m.to_address ?? m.toAddress);
+  const cc = addressList(m.cc);
 
-  const body =
-    m.extracted_text ??
-    m.extractedText ??
-    m.text ??
-    stripHtml(m.html ?? m.extracted_html ?? "");
+  // extracted_text is the new content with quoted history stripped — but it
+  // can come through empty (e.g. bottom-posted replies), so fall back to the
+  // full text with quoted history removed ourselves, then to HTML.
+  const body = firstNonEmpty([
+    m.extracted_text ?? m.extractedText,
+    typeof m.text === "string" ? stripQuotedHistory(m.text) : null,
+    stripHtml(m.extracted_html ?? m.extractedHtml ?? ""),
+    stripHtml(m.html ?? ""),
+  ]);
 
   const receivedAtRaw = m.timestamp ?? m.created_at ?? m.createdAt ?? Date.now();
   const receivedAt =
@@ -125,21 +128,66 @@ export function parseInboundPayload(raw: any): AgentMailIncomingMessage {
       : new Date();
 
   return {
+    eventType: typeof raw?.event_type === "string" ? raw.event_type : null,
     messageId: String(
       m.message_id ?? m.messageId ?? m.id ?? `am_${Date.now()}`,
     ),
     threadId: String(m.thread_id ?? m.threadId ?? m.id ?? ""),
     fromEmail,
     fromName,
-    toEmail,
+    toEmail: to[0] ?? "",
+    to,
+    cc,
     subject: m.subject ?? "",
-    body: typeof body === "string" ? body.trim() : "",
+    body,
     receivedAt,
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function addressList(value: any): string[] {
+  if (!value) return [];
+  const items: unknown[] = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : [value];
+  return items
+    .map((v) =>
+      typeof v === "string"
+        ? extractEmail(v)
+        : String((v as { email?: string })?.email ?? ""),
+    )
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function firstNonEmpty(values: unknown[]): string {
+  for (const v of values) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "";
+}
+
+/**
+ * Drop quoted history from a plain-text reply: everything from the first
+ * "On <date>, <person> wrote:" (Gmail wraps it over two lines sometimes) or
+ * Outlook "Original Message" / "From: … Sent:" header, plus any "> " lines.
+ */
+export function stripQuotedHistory(text: string): string {
+  const cut = text.search(
+    /(^|\n)[ \t]*(On\s[^\n]*(\n[^\n]*)?\swrote:|-{2,}\s*Original Message\s*-{2,}|From:\s[^\n]+\n[ \t]*(Sent|Date):)/i,
+  );
+  const head = cut >= 0 ? text.slice(0, cut) : text;
+  return head
+    .split("\n")
+    .filter((line) => !/^\s*>/.test(line))
+    .join("\n")
+    .trim();
+}
+
 function extractEmail(s: string): string {
-  const match = s.match(/<(.+?)>$/);
+  const match = s.trim().match(/<(.+?)>$/);
   return match ? match[1].trim() : s.trim();
 }
 
