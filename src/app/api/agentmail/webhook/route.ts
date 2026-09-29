@@ -38,7 +38,7 @@ import {
 } from "@/lib/howdy/threads";
 import { hitRateLimit, LIMITS, spendAiTurn } from "@/lib/howdy/rate-limit";
 import { isStopRequest, suppress, suppressedAmong, unsuppress } from "@/lib/howdy/suppression";
-import { humanIsHandling, takeoverLink } from "@/lib/howdy/takeover";
+import { humanIsHandling, setPaused, takeoverLink } from "@/lib/howdy/takeover";
 import { verifyWebhook } from "@/lib/howdy/webhook-auth";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 import { errorMessage, firstName, SITE_URL } from "@/lib/utils";
@@ -379,10 +379,20 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
     });
 
     await saveBrief(thread.id, turn.brief);
-    // The agent's reply is either an immediate clarification or an "ack"
-    // when the brief gets scheduled. Send it now.
+    // The agent's reply is a clarification, an "ack" when the brief gets
+    // scheduled, or a holding message when a person should take over.
     await replyAndRecord(email, thread.id, turn.reply);
     await markThreadProcessed(thread.id);
+
+    if (turn.escalation) {
+      await setPaused(thread.id, true);
+      await alertOps(
+        email,
+        "🙋 Reply needed — Howdy handed this conversation to you",
+        `Why: ${turn.escalation}. Howdy told them a teammate will reply. To hand it back: ${takeoverLink(thread.id, "auto")}`,
+      );
+      return ok("escalated");
+    }
 
     return ok(turn.scheduled ? "scheduled_match" : "clarified", {
       scheduled: turn.scheduled

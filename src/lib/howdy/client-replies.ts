@@ -25,8 +25,10 @@ import { howdyAddresses } from "./inbound-guard";
 import { getChatModel } from "./llm";
 import { memoriesAsContext } from "./memories";
 import { handleClientSelection, startRematch, tellClient } from "./outreach";
-import { rematchStartedNotice } from "./outreach-content";
+import { notifyOps } from "./notify";
+import { humanHandoverNotice, rematchStartedNotice } from "./outreach-content";
 import { type PendingMatch, updateRequestBrief } from "./scheduler";
+import { setPaused, takeoverLink } from "./takeover";
 import { saveBrief, type ThreadRow } from "./threads";
 import { HOWDY_VOICE, polish } from "./voice";
 import { type Brief, type Freelancer, PROMISE_HOURS } from "./types";
@@ -37,10 +39,11 @@ export type ClientReplyAction =
   | "client_more_options"
   | "client_question"
   | "client_new_project"
-  | "client_other";
+  | "client_other"
+  | "escalated";
 
 const ClientReplySchema = z.object({
-  intent: z.enum(["pick", "more_options", "question", "new_project", "other"]),
+  intent: z.enum(["pick", "more_options", "question", "new_project", "needs_human", "other"]),
   chosen_freelancer_ids: z
     .array(z.string())
     .describe(
@@ -49,7 +52,9 @@ const ClientReplySchema = z.object({
   reason: z
     .string()
     .nullable()
-    .describe("more_options: what they want different, in their words. Otherwise null."),
+    .describe(
+      "more_options: what they want different, in their words. needs_human: one short clause on why, for the team. Otherwise null.",
+    ),
   reply: z
     .string()
     .nullable()
@@ -65,6 +70,7 @@ Intents:
 - "more_options": they want different or additional people ("anyone else?", "none of these", "not quite right"). Put what they want different, in their words, in reason.
 - "question": they're asking about one or more of the freelancers (rate, portfolio, availability, experience). Put the IDs it's about in chosen_freelancer_ids, and answer in reply using ONLY the profiles given — if the answer isn't there, say plainly you don't have that detail and suggest they ask the freelancer directly once connected. Never promise to find out.
 - "new_project": they want to hire for a separate, different role or project.
+- "needs_human": a person on the team should take over: they're upset or complaining, ask to speak to someone, or raise payment, refunds, pricing or fees, contracts or legal terms. Put why in reason.
 - "other": thanks, small talk, or anything else. Write a short, warm reply that promises nothing beyond the situation note.
 
 If they name someone to meet AND ask a question in the same reply, the intent is "pick" — acting on the choice matters more than the question.
@@ -143,6 +149,17 @@ export async function handleClientReply(args: {
     await startRematch({ request, reason: intent.reason ?? text, brief });
     await reply("client_more_options", rematchStartedNotice());
     return { action: "client_more_options" };
+  }
+
+  if (intent.intent === "needs_human") {
+    // Reply first: once paused, dispatch would hold it for the team instead.
+    await reply("client_handover", humanHandoverNotice());
+    await setPaused(request.threadId, true);
+    await notifyOps({
+      subject: `🙋 Reply needed — Howdy handed ${request.userEmail} to you`,
+      text: `Why: ${intent.reason ?? "the conversation needs a person"}.\n\nTheir message:\n"${text.slice(0, 400)}"\n\nHowdy told them a teammate will reply. To hand it back: ${takeoverLink(request.threadId, "auto")}\n— Howdy`,
+    });
+    return { action: "escalated" };
   }
 
   if (intent.intent === "new_project") {

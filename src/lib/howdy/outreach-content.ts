@@ -192,6 +192,11 @@ export function selectionAck(args: {
   return parts.join(" ");
 }
 
+/** Holding reply when a conversation is handed to a person on the team. */
+export function humanHandoverNotice(): string {
+  return "That one's for my teammate, so I've looped them in. They'll reply here soon.";
+}
+
 /** A rematch search has been queued. */
 export function rematchStartedNotice(): string {
   return `On it. I'll line up fresh people (nobody you've already seen) and send them over within ${PROMISE_HOURS} hours.`;

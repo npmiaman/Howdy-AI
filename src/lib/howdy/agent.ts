@@ -11,6 +11,7 @@ import {
   type PendingMatch,
   schedulePendingMatch,
 } from "./scheduler";
+import { humanHandoverNotice } from "./outreach-content";
 import { polish } from "./voice";
 import {
   type Brief,
@@ -163,8 +164,14 @@ async function scheduleNode(
   };
 }
 
+/** Hand the conversation to a person: a short holding reply, nothing else. */
+async function escalateNode(): Promise<Partial<HowdyStateType>> {
+  return { messages: [new AIMessage(humanHandoverNotice())] };
+}
+
 // Replies after a request exists are routed by client-replies.ts, not here.
-function decideRoute(state: HowdyStateType): "schedule" | "clarify" {
+function decideRoute(state: HowdyStateType): "schedule" | "clarify" | "escalate" {
+  if (state.assessment?.needsHuman) return "escalate";
   // Match once the required core of the brief is clear (see REQUIRED_FIELDS);
   // otherwise keep clarifying.
   return state.assessment?.allResolved ? "schedule" : "clarify";
@@ -174,13 +181,16 @@ const graph = new StateGraph(HowdyState)
   .addNode("extract", extractNode)
   .addNode("clarify", clarifyNode)
   .addNode("schedule", scheduleNode)
+  .addNode("escalate", escalateNode)
   .addEdge(START, "extract")
   .addConditionalEdges("extract", decideRoute, {
     schedule: "schedule",
     clarify: "clarify",
+    escalate: "escalate",
   })
   .addEdge("clarify", END)
-  .addEdge("schedule", END);
+  .addEdge("schedule", END)
+  .addEdge("escalate", END);
 
 export const howdyAgent = graph.compile();
 
@@ -197,6 +207,8 @@ export type AgentOutput = {
   reply: string;
   brief: Brief;
   scheduled: PendingMatch | null;
+  /** Set when a person should take over; the reply is a holding message. */
+  escalation: string | null;
 };
 
 export async function runHowdyTurn(input: AgentInput): Promise<AgentOutput> {
@@ -218,6 +230,9 @@ export async function runHowdyTurn(input: AgentInput): Promise<AgentOutput> {
     reply,
     brief: result.brief,
     scheduled: result.scheduled,
+    escalation: result.assessment?.needsHuman
+      ? (result.assessment.humanReason ?? "the conversation needs a person")
+      : null,
   };
 }
 
