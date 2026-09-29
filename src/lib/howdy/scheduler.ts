@@ -17,6 +17,17 @@ import {
 const BUSINESS_HOURS_START = Number(process.env.HOWDY_BUSINESS_HOURS_START ?? 9); // 9 AM
 const BUSINESS_HOURS_END = Number(process.env.HOWDY_BUSINESS_HOURS_END ?? 16); // 4 PM
 
+/**
+ * How long a cron step's claim holds. A run killed mid-step (Vercel's 60s
+ * limit, a crash) leaves its claim behind; once it's older than this, the next
+ * run can take it over instead of the request being stranded forever.
+ */
+export const CLAIM_LEASE_MS = 10 * 60 * 1000;
+
+export function leaseCutoff(): string {
+  return new Date(Date.now() - CLAIM_LEASE_MS).toISOString();
+}
+
 export type PendingMatch = {
   id: string;
   threadId: string;
@@ -202,13 +213,14 @@ export async function updateRequestBrief(id: string, brief: Brief): Promise<void
 // next tick) can never process the same step twice. A failed step releases
 // its claim so the next run retries it.
 
-/** Claim a due request for starting outreach (processed_at null → now). */
+/** Claim a due request for starting outreach (processed_at → now). */
 export async function claimPending(id: string): Promise<boolean> {
   const { data, error } = await getSupabaseAdmin()
     .from("pending_matches")
     .update({ processed_at: new Date().toISOString() })
     .eq("id", id)
-    .is("processed_at", null)
+    .eq("phase", "matching")
+    .or(`processed_at.is.null,processed_at.lt.${leaseCutoff()}`)
     .select("id");
   if (error) throw error;
   return (data ?? []).length > 0;
@@ -221,13 +233,14 @@ export async function releasePending(id: string): Promise<void> {
     .eq("id", id);
 }
 
-/** Claim a request for the 24h fallback delivery (shortlist_sent_at null → now). */
+/** Claim a request for the 24h fallback delivery (shortlist_sent_at → now). */
 export async function claimFallback(id: string): Promise<boolean> {
   const { data, error } = await getSupabaseAdmin()
     .from("pending_matches")
     .update({ shortlist_sent_at: new Date().toISOString() })
     .eq("id", id)
-    .is("shortlist_sent_at", null)
+    .in("phase", ["matching", "outreach"])
+    .or(`shortlist_sent_at.is.null,shortlist_sent_at.lt.${leaseCutoff()}`)
     .select("id");
   if (error) throw error;
   return (data ?? []).length > 0;
@@ -240,11 +253,14 @@ export async function releaseFallback(id: string): Promise<void> {
     .eq("id", id);
 }
 
-/** Claim a due intro send (connect_after cleared so no other run picks it up). */
+/**
+ * Claim a due intro send by pushing connect_after one lease into the future:
+ * no other run picks it up meanwhile, and if this run dies it's due again.
+ */
 export async function claimConnect(id: string): Promise<boolean> {
   const { data, error } = await getSupabaseAdmin()
     .from("pending_matches")
-    .update({ connect_after: null })
+    .update({ connect_after: new Date(Date.now() + CLAIM_LEASE_MS).toISOString() })
     .eq("id", id)
     .eq("phase", "connecting")
     .lte("connect_after", new Date().toISOString())
@@ -272,7 +288,8 @@ export async function listDuePendingMatches(
   const { data, error } = await supabase
     .from("pending_matches")
     .select("*")
-    .is("processed_at", null)
+    .eq("phase", "matching")
+    .or(`processed_at.is.null,processed_at.lt.${leaseCutoff()}`)
     .lte("scheduled_at", now.toISOString())
     .order("scheduled_at", { ascending: true });
   if (error) throw error;
@@ -282,12 +299,10 @@ export async function listDuePendingMatches(
 /**
  * Requests that have blown (or are about to blow) the 24h promise without a
  * shortlist reaching the client — the hybrid fallback delivers DB-ranked
- * matches for these. Targets:
- *   - phase 'outreach' (recruiting, no shortlist yet), or
- *   - phase 'matching' AND not yet processed (outreach never even started),
- * that came in between FALLBACK_MAX_AGE_HOURS and FALLBACK_DELIVERY_HOURS ago.
- * The age floor keeps us from resurrecting ancient stalled rows (e.g. legacy
- * 'matching' rows that were already processed under an older flow).
+ * matches for these: phase 'matching' (outreach never started, or a start that
+ * died mid-way) or 'outreach' (recruiting), with no delivery in progress, that
+ * came in between FALLBACK_MAX_AGE_HOURS and FALLBACK_DELIVERY_HOURS ago. The
+ * age floor keeps us from resurrecting ancient stalled rows.
  */
 export async function listFallbackDue(
   now: Date = new Date(),
@@ -305,8 +320,8 @@ export async function listFallbackDue(
     .select("*")
     .lte("created_at", cutoff)
     .gte("created_at", floor)
-    .is("shortlist_sent_at", null)
-    .or("phase.eq.outreach,and(phase.eq.matching,processed_at.is.null)")
+    .in("phase", ["matching", "outreach"])
+    .or(`shortlist_sent_at.is.null,shortlist_sent_at.lt.${leaseCutoff()}`)
     .order("created_at", { ascending: true });
   if (error) throw error;
   return (data ?? []).map(rowToPendingMatch);

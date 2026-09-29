@@ -23,7 +23,7 @@ import {
   followupQuestion,
   rematchOffer,
 } from "./post-match-content";
-import { getPendingById, type PendingMatch } from "./scheduler";
+import { getPendingById, leaseCutoff, type PendingMatch } from "./scheduler";
 import {
   type CheckinParty,
   type CheckinSentiment,
@@ -150,7 +150,7 @@ export async function sendDueCheckins(): Promise<{ sent: number }> {
     .from("post_match_checkins")
     .select("*")
     .eq("status", "scheduled")
-    .is("sent_at", null)
+    .or(`sent_at.is.null,sent_at.lt.${leaseCutoff()}`)
     .lte("scheduled_at", new Date().toISOString());
   if (error) throw error;
   const due = (data ?? []).map(rowToCheckin);
@@ -163,7 +163,7 @@ export async function sendDueCheckins(): Promise<{ sent: number }> {
       .update({ sent_at: new Date().toISOString() })
       .eq("id", ch.id)
       .eq("status", "scheduled")
-      .is("sent_at", null)
+      .or(`sent_at.is.null,sent_at.lt.${leaseCutoff()}`)
       .select("id");
     if (!claimed?.length) continue;
     try {

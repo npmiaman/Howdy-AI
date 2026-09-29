@@ -227,7 +227,7 @@ export class FakeLLM {
           this.calls.push(call);
           const handler = this.handlers.get(opts.name) ?? DEFAULT_HANDLERS[opts.name];
           if (!handler) throw new Error(`fake llm: no handler for "${opts.name}"`);
-          return schema.parse(handler(call));
+          return schema.parse(await handler(call));
         },
       }),
     };

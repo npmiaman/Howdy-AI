@@ -143,6 +143,27 @@ export async function POST(request: Request) {
     return ok("ignored_event");
   if (!email.fromEmail || !email.threadId) return ok("skipped_no_from_or_thread");
 
+  // Vercel kills the function at maxDuration with no error path; stop just
+  // short of it so a slow model or a hang still ends in an ops alert.
+  const deadlineMs = Number(process.env.HOWDY_WEBHOOK_DEADLINE_MS ?? 50_000);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), deadlineMs);
+  });
+  const result = await Promise.race([handleInbound(email), timedOut]);
+  clearTimeout(timer);
+  if (result === "timeout") {
+    console.error(`[agentmail-webhook] deadline exceeded for ${email.messageId}`);
+    await notifyOps({
+      subject: "🐢 Howdy ran out of time on an inbound email",
+      text: `From: ${email.fromEmail}\nRe: ${email.subject}\n\nHandling took longer than ${Math.round(deadlineMs / 1000)}s (usually a slow or overloaded model). They may not have had a reply — a human should check.\n\n"${email.body.slice(0, 400)}"\n\n— Howdy`,
+    });
+    return NextResponse.json({ ok: false, error: "deadline_exceeded" }, { status: 504 });
+  }
+  return result;
+}
+
+async function handleInbound(email: AgentMailIncomingMessage): Promise<NextResponse> {
   try {
     if (await alreadyHandled(email.messageId)) return ok("duplicate");
 

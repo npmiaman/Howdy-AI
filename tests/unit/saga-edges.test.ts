@@ -165,5 +165,51 @@ describe("saga edges", () => {
     expect(String(res.body.error)).toMatch(/0006/);
     expect(table("pending_matches")[0].processed_at).toBeNull();
   });
+
+  it("a start that died mid-way (claim left behind) is picked up once the claim expires", async () => {
+    process.env.HOWDY_OUTREACH_DRYRUN = "false";
+    roster(6);
+    await scheduled();
+    advance(3 * HOUR + MIN);
+    const { claimPending } = await import("@/lib/howdy/scheduler");
+    expect(await claimPending(String(table("pending_matches")[0].id))).toBe(true); // …then "killed"
+    await runCron();
+    expect(invited()).toHaveLength(0); // claim still fresh: left alone
+    advance(11 * MIN);
+    await runCron();
+    expect(invited()).toHaveLength(3);
+  });
+
+  it("an intro send that died mid-way goes out once its claim expires", async () => {
+    process.env.HOWDY_OUTREACH_DRYRUN = "false";
+    roster(6);
+    await scheduled();
+    advance(3 * HOUR + MIN);
+    await runCron();
+    for (const e of invited()) {
+      await postWebhook(fakeMail.inbound({ from: e, text: "Yes!", replyTo: fakeMail.last(e) }));
+    }
+    const shown = table("match_candidates").find((c) => c.shown_to_client_at)!;
+    const f = table("freelancers").find((x) => x.id === shown.freelancer_id)!;
+    await clientSays(`${String(f.name).split(" ")[0]} please`);
+    advance(6 * MIN);
+    const { claimConnect } = await import("@/lib/howdy/scheduler");
+    expect(await claimConnect(String(table("pending_matches")[0].id))).toBe(true); // …then "killed"
+    await runCron();
+    expect(table("pending_matches")[0].phase).toBe("connecting");
+    advance(11 * MIN);
+    await runCron();
+    expect(table("pending_matches")[0].phase).toBe("connected");
+    expect(fakeMail.last(CLIENT)?.cc).toContain(String(f.email));
+  });
+
+  it("a hung model call ends in a 504 and an ops alert, not a silent kill", async () => {
+    process.env.HOWDY_WEBHOOK_DEADLINE_MS = "50";
+    fakeLLM.on("brief", () => new Promise(() => {}));
+    const res = await postWebhook(fakeMail.inbound({ from: CLIENT, subject: "Hi", text: "I need a video editor" }));
+    delete process.env.HOWDY_WEBHOOK_DEADLINE_MS;
+    expect(res.status).toBe(504);
+    expect(fakeMail.last(OPS)?.subject).toMatch(/ran out of time/i);
+  });
 });
 
