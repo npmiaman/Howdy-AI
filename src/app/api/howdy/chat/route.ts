@@ -18,6 +18,9 @@ import {
 import { EMPTY_BRIEF, type Brief } from "@/lib/howdy/types";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 
+import { handOffToEmail, webThreadKey } from "./handoff";
+import { withRetry } from "./retry";
+
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
@@ -40,26 +43,12 @@ const ChatRequestSchema = z.object({
     .max(60),
   // Stable per-visitor id from the widget, so every turn lands on one thread.
   sessionId: z.string().min(1).max(100).optional(),
+  // Sent once the brief is ready: hands the conversation off to email. Shape
+  // only here — handOffToEmail validates the values with friendly errors.
+  contact: z
+    .object({ name: z.string().max(500), email: z.string().max(500) })
+    .optional(),
 });
-
-// Retry a DB op a few times with backoff — absorbs transient Supabase blips.
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  label: string,
-  attempts = 3,
-): Promise<T> {
-  let lastErr: unknown;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      lastErr = e;
-      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 150 * (i + 1)));
-    }
-  }
-  console.error(`[howdy/chat] ${label} failed after ${attempts} attempts`, lastErr);
-  throw lastErr;
-}
 
 // Small deterministic hash → stable fallback session key when none is sent.
 function simpleHash(s: string): string {
@@ -101,7 +90,7 @@ async function cacheInbound(
     const thread = await withRetry(
       () =>
         findOrCreateThread({
-          gmailThreadId: `web:${sessionKey}`,
+          gmailThreadId: webThreadKey(sessionKey),
           userEmail: `web-${sessionKey.slice(0, 12)}@howdy.chat`,
           subject:
             messages.find((m) => m.role === "user")?.content.slice(0, 80) ??
@@ -150,7 +139,7 @@ async function cacheReply(
   }
 }
 
-const CLARIFY_DEMO_PROMPT = `You are Howdy, an AI freelancer-matching agent, talking to a visitor who is trying you out on the website.
+const CLARIFY_PROMPT = `You are Howdy, an AI freelancer-matching agent, chatting with a hirer on the Howdy website.
 
 Your job in this turn is to ask ONE precise clarifying question that will most improve the eventual match. Then stop.
 
@@ -172,14 +161,12 @@ Rules:
 - Sound like a sharp, friendly text from a smart human matchmaker (not a form). Vary phrasing.
 - Keep it under two short sentences. No greetings, no preamble.`;
 
-const DEMO_ACK_PROMPT = `You are Howdy, an AI freelancer-matching agent, talking to a visitor who is trying you out on the website. They've now given you enough info to find a match.
-
-In the live product, you'd schedule a real match for later today. For this demo, write ONE short reply (2-3 short sentences) that:
-- Acknowledges what they're looking for in 1 sentence (reference one specific detail from their brief).
-- Tells them this is the moment in the real product where you'd quietly go find a vetted match and email it back later today.
-- Invites them to email howdyai@agentmail.to to use the real thing.
-- Sounds like a friendly text, not a form letter.
-- No greetings or signoffs.`;
+// Asked once the brief is ready. Deterministic so the ask for contact details
+// (which the widget answers with its inline form) is always there.
+function contactAsk(brief: Brief): string {
+  const role = brief.role?.trim();
+  return `Love it — I've got what I need to start scouting${role ? ` your ${role}` : ""}. What's your name and the best email for your shortlist? It'll land within 24 hours.`;
+}
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -197,9 +184,20 @@ export async function POST(request: Request) {
     );
   }
 
+  const sessionKey = sessionKeyFor(parsed.data.sessionId, parsed.data.messages);
+
+  // Contact details for a ready brief → hand the conversation off to email.
+  // Every chat turn is already cached, so this skips the caching below.
+  if (parsed.data.contact) {
+    return handOffToEmail({
+      request,
+      sessionKey,
+      contact: parsed.data.contact,
+    });
+  }
+
   // Capture the message up front — even before checking the LLM is online, so a
   // misconfigured/offline agent never costs us the visitor's message.
-  const sessionKey = sessionKeyFor(parsed.data.sessionId, parsed.data.messages);
   const threadId = await cacheInbound(sessionKey, parsed.data.messages);
 
   if (!process.env.GOOGLE_API_KEY) {
@@ -215,7 +213,7 @@ export async function POST(request: Request) {
 
   // Run the agent. A failure here must not lose the message cached above.
   let text: string;
-  let done: boolean;
+  let needsContact = false;
   let brief: Brief = EMPTY_BRIEF;
   try {
     brief = await extractBrief(lcMessages, EMPTY_BRIEF, "");
@@ -223,30 +221,20 @@ export async function POST(request: Request) {
       (m) => m.getType() !== "human",
     ).length;
     const assessment = await assessBrief(lcMessages, brief, "", clarifyTurns);
-    const llm = getChatModel();
 
-    // Match only once every field is clear (or not-applicable).
+    // Brief is ready → ask where to send the shortlist (the handoff happens
+    // when the widget posts back the contact details).
     if (assessment.allResolved) {
-      const reply = await llm.invoke([
-        new SystemMessage(DEMO_ACK_PROMPT),
-        new HumanMessage(
-          `Brief:\n${JSON.stringify(brief, null, 2)}\n\nWrite the demo ack.`,
-        ),
-      ]);
-      text =
-        typeof reply.content === "string"
-          ? reply.content.trim()
-          : JSON.stringify(reply.content);
-      done = true;
+      text = contactAsk(brief);
+      needsContact = true;
     } else if (assessment.nextQuestion?.trim()) {
       // The assessor already wrote the sharp, context-grounded next question
       // (re-asking sharper when the prior answer was vague).
       text = assessment.nextQuestion.trim();
-      done = false;
     } else {
       // Fallback: ask from the raw priority prompt if the assessor returned none.
-      const reply = await llm.invoke([
-        new SystemMessage(CLARIFY_DEMO_PROMPT),
+      const reply = await getChatModel().invoke([
+        new SystemMessage(CLARIFY_PROMPT),
         new HumanMessage(
           `Conversation so far:
 ${lcMessages
@@ -263,7 +251,6 @@ Ask the single highest-priority unanswered question.`,
         typeof reply.content === "string"
           ? reply.content.trim()
           : JSON.stringify(reply.content);
-      done = false;
     }
   } catch (err) {
     // The agent failed, but the visitor's message is already cached (step 1).
@@ -287,5 +274,9 @@ Ask the single highest-priority unanswered question.`,
   // STEP 3 — persist this turn's reply + brief (best-effort, retried).
   await cacheReply(threadId, text, brief);
 
-  return NextResponse.json({ reply: text, done });
+  return NextResponse.json(
+    needsContact
+      ? { reply: text, done: false, needsContact: true }
+      : { reply: text, done: false },
+  );
 }
