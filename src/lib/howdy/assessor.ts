@@ -11,7 +11,7 @@ import {
 } from "./types";
 
 // After this many of Howdy's clarifying turns, stop interrogating and proceed
-// with whatever we have — a backstop against looping forever (ML_AGENTS §12.12).
+// with whatever we have — a backstop against looping forever.
 export const MAX_CLARIFY_TURNS = 12;
 
 const FIELD_KEYS = FIELD_PRIORITY.map((f) => f.key) as [string, ...string[]];
@@ -92,7 +92,7 @@ export async function assessBrief(
 
   // Index the model's per-field statuses, then rebuild against the full field
   // list in code so a field the model forgot defaults to "missing" — we never
-  // trust the model to enumerate completeness (ML_AGENTS §8.14, §12.2).
+  // trust the model to enumerate completeness.
   const byField = new Map<string, FieldStatus>();
   const reasons = new Map<string, string>();
   for (const f of result.fields) {

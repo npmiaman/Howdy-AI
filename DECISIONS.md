@@ -28,10 +28,10 @@ multi-actor saga driven by inbound email over hours/days.
 - **Anonymized until accept.** The outreach email to freelancers (who may
   decline) reveals project type, budget, timeline, vibe — NOT the client's
   identity. Client identity is revealed only after the freelancer accepts.
-  Reason: don't leak client identity to people who pass (privacy, §5.9).
+  Reason: don't leak client identity to people who pass (privacy).
 - **Dry-run first.** Built behind `HOWDY_OUTREACH_DRYRUN` (default ON). In
   dry-run, intended emails are logged + recorded, never sent. Flip to live only
-  after the saga logic is proven end-to-end (§14.5 shadow-before-live).
+  after the saga logic is proven end-to-end (shadow before live).
 
 **Trajectory-predictive matching.** Not yet built (FDR research stage). The
 ranking step uses the existing embedding + LLM-rerank shortlist for now, behind
