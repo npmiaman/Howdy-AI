@@ -15,8 +15,7 @@ async function main() {
     bio: "Editor", portfolio_summary: "Launch films",
   });
   const people = [f("fl-a", "Maya Chen"), f("fl-b", "Omar Haddad"), f("fl-c", "Priya Nair")];
-  const shown = people.map((p, i) => ({ id: `c${i}`, requestId: "r", threadId: "t", freelancerId: p.id, rank: i, status: "accepted", rationale: null, confidence: null, outreachThreadId: null, outreachMessageId: null, invitedAt: null, respondedAt: null, shownToClientAt: new Date() })) as never;
-  const map = new Map(people.map((p) => [p.id, p])) as never;
+  const profiles = people.map((p) => `ID: ${p.id} — ${p.name} (${p.role})\nRate: $${p.rate_usd_per_hour}/hr · Timezone: ${p.timezone}\nBio: ${p.bio}`);
   const cases: Array<[string, string]> = [
     ["Let's go with Maya", "pick"],
     ["The second one looks perfect, please connect us", "pick"],
@@ -32,12 +31,19 @@ async function main() {
     ["not keen on any of them tbh", "more_options"],
   ];
   let right = 0;
+  const times: number[] = [];
   for (const [text, want] of cases) {
-    const got = await classifyClientReply(text, shown, map);
+    const t0 = Date.now();
+    const got = await classifyClientReply({ text, profiles, phase: "shortlist_sent" });
+    const ms = Date.now() - t0;
+    times.push(ms);
     const ok = got.intent === want;
     if (ok) right += 1;
-    console.log(`${ok ? "✓" : "✗"} ${want.padEnd(12)} got=${got.intent.padEnd(12)} ids=${JSON.stringify(got.chosen_freelancer_ids)}  "${text}"`);
+    console.log(`${ok ? "✓" : "✗"} ${String(ms).padStart(5)}ms ${want.padEnd(12)} got=${got.intent.padEnd(12)} ids=${JSON.stringify(got.chosen_freelancer_ids)}  "${text}"${got.reply ? `  → ${got.reply}` : ""}`);
   }
-  console.log(`\n${right}/${cases.length} as expected (one run, temperature 0.2)`);
+  times.sort((a, b) => a - b);
+  console.log(
+    `\n${process.env.GEMINI_CHAT_MODEL ?? "gemini-flash-latest"}: ${right}/${cases.length} as expected · median ${times[Math.floor(times.length / 2)]}ms · max ${times[times.length - 1]}ms (one run, temperature 0.2)`,
+  );
 }
 main().catch((e) => { console.error(e); process.exit(1); });

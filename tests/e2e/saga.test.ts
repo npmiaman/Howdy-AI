@@ -138,11 +138,10 @@ describe("happy path: brief → recruit → shortlist → intro → check-in →
     const pick = await clientSays(`Let's go with ${pickName}`);
     expect(pick.body.action).toBe("client_selected");
     const chosenEmail = emailOf(shown[0].freelancer_id);
-    // The heads-up goes out on their invite thread (the fake LLM echoes the
-    // prompt, so the text identifies which message this is).
+    // The heads-up goes out on their invite thread.
     const notice = fakeMail.last(chosenEmail)!;
     expect(notice.threadId).toBe(invitesTo(chosenEmail)[0].threadId);
-    expect(notice.text).toMatch(/client picked them/i);
+    expect(notice.text).toMatch(/the client picked you/i);
     expect(requests()[0].phase).toBe("connecting");
 
     // A few minutes later the intro goes out, CC'ing both.
@@ -175,9 +174,11 @@ describe("happy path: brief → recruit → shortlist → intro → check-in →
       "rematch_started",
     );
 
-    // The rematch is a fresh request on the same conversation, recruiting
-    // people who haven't been contacted — never the one it didn't work with.
+    // The rematch is a fresh request on the same conversation; the next cron
+    // run recruits people who haven't been contacted — never the one it
+    // didn't work with.
     expect(requests()).toHaveLength(2);
+    await runCron();
     const rematch = requests().find((r) => r.id !== req.id)!;
     expect(rematch.thread_id).toBe(req.thread_id);
     expect(rematch.phase).toBe("outreach");
@@ -236,6 +237,7 @@ describe("client replies are routed by where their request actually is", () => {
     const res = await clientSays("Hmm, none of these feel right. Anyone else?");
     expect(res.body.action).toBe("client_more_options");
     expect(requests()).toHaveLength(2);
+    await runCron(); // the rematch recruits on the next run
     const rematch = requests()[1];
     const fresh = candidates(String(rematch.id));
     expect(fresh.length).toBeGreaterThan(0);
@@ -253,10 +255,12 @@ describe("client replies are routed by where their request actually is", () => {
     const res = await clientSays("Can you tell me more about #2? What's their portfolio like?");
     expect(res.body.action).toBe("client_question");
     expect(JSON.stringify([requests(), candidates()])).toBe(before);
-    // The answer is grounded in the shortlisted profiles.
-    const answerCall = fakeLLM.calls.filter((c) => c.name === "text").pop()!;
+    // The answer is written from the shortlisted profiles, in the same call
+    // that classifies the reply.
+    const call = fakeLLM.callsTo("client_reply").pop()!;
     const second = shownCandidates(requests()[0].id)[1];
-    expect(answerCall.human).toContain(nameOf(second.freelancer_id));
+    expect(call.human).toContain(nameOf(second.freelancer_id));
+    expect(fakeMail.last(CLIENT)?.text).toBe("[fake answer from profiles]");
   });
 
   it("a new project points them to a fresh email instead of promising nothing", async () => {

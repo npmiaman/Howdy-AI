@@ -4,6 +4,7 @@ import { z } from "zod";
 import { sendFreshEmail } from "@/lib/agentmail/client";
 import { type RecordResult, recordApplication } from "@/lib/howdy/applications";
 import { notifyOps } from "@/lib/howdy/notify";
+import { errorMessage, firstName } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -165,27 +166,18 @@ export async function POST(request: Request) {
   const app = parsed.data;
 
   // Never throws; on failure it logs the full payload and says so.
-  const record = await recordApplication({
-    fullName: app.fullName,
-    email: app.email,
-    role: app.role,
-    portfolioUrl: app.portfolioUrl,
-    rateUsdPerHour: app.rateUsdPerHour ?? null,
-    timezone: app.timezone ?? null,
-    skills: app.skills ?? [],
-    bio: app.bio ?? null,
-  });
+  const record = await recordApplication(app);
 
-  const firstName = app.fullName.split(" ")[0] ?? app.fullName;
+  const first = firstName(app.fullName, app.fullName);
   let confirmation = "sent";
   try {
     await sendFreshEmail({
       to: app.email,
-      subject: `Got your application, ${firstName}`,
-      text: confirmationBody(firstName),
+      subject: `Got your application, ${first}`,
+      text: confirmationBody(first),
     });
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = errorMessage(err);
     console.error("[/api/freelancer-apply] confirmation email failed:", detail);
     confirmation = `FAILED (${detail})`;
   }

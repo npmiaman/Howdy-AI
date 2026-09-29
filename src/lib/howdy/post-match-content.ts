@@ -5,20 +5,10 @@
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
+import { generateText as write } from "./generate";
 import { getChatModel } from "./llm";
 import type { CheckinParty, CheckinSentiment } from "./types";
 
-async function write(system: string, user: string): Promise<string> {
-  const reply = await getChatModel().invoke([
-    new SystemMessage(system),
-    new HumanMessage(user),
-  ]);
-  return (
-    typeof reply.content === "string"
-      ? reply.content
-      : JSON.stringify(reply.content)
-  ).trim();
-}
 
 const PARTY_LABEL: Record<CheckinParty, string> = {
   company: "the client who hired",

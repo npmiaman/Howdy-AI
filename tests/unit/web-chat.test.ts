@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeMail } from "../fakes/agentmail";
 import { DEFAULT_HANDLERS, fakeLLM, type LlmCall } from "../fakes/llm";
 import { fakeDb } from "../fakes/supabase";
-import { MIN, advance, roster, runCron, table } from "../helpers";
+import { DAY, HOUR, MIN, advance, roster, runCron, table } from "../helpers";
 
 const SESSION = "sess-web-1";
 const EMAIL = "dana@client.co";
@@ -285,9 +285,9 @@ describe("website chat → email handoff", () => {
     const handoff = fakeMail.last(EMAIL)!;
     process.env.HOWDY_OUTREACH_DRYRUN = "false";
     roster();
-    advance(3 * 60 * MIN + MIN);
+    advance(3 * HOUR + MIN);
     await runCron(); // outreach starts
-    advance(17 * 60 * MIN);
+    advance(17 * HOUR);
     await runCron(); // nobody replied → 24h fallback shortlist
     const shortlist = fakeMail.last(EMAIL)!;
     expect(shortlist.text).toMatch(/top \d matches|strongest match/i);
@@ -309,7 +309,7 @@ describe("website chat → email handoff", () => {
   it("a returning client's new brief starts its own conversation", async () => {
     const first = await readyVisitor();
     await first.contact("Dana Client", EMAIL);
-    advance(2 * 24 * 60 * MIN);
+    advance(2 * DAY);
     const second = visitor("sess-web-2");
     await second.say("I need a video editor");
     await second.say("It's a launch film for our fintech app, $60/hr, in 2 weeks, senior");

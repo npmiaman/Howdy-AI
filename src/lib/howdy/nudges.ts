@@ -6,8 +6,10 @@
  */
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 
+import { firstName } from "@/lib/utils";
+
+import { claimRow } from "./claims";
 import { dispatch, wouldSend } from "./mailer";
-import { appendMessage } from "./threads";
 
 export const NUDGE_AFTER_HOURS = 48;
 export const NUDGE_MAX_AGE_DAYS = 14;
@@ -41,54 +43,62 @@ export async function sendLeadNudges(): Promise<{ sent: number; skippedDryRun: n
     .is("last_processed_at", null)
     .not("user_email", "ilike", "%@howdy.chat");
   if (error) throw error;
+  const all = (threads ?? []) as ThreadLite[];
+  const sendable = all.filter((t) => wouldSend([t.user_email]));
+  if (sendable.length === 0) return { sent: 0, skippedDryRun: all.length };
+
+  // One query for every candidate thread's messages, grouped here.
+  const { data: msgs, error: msgErr } = await sb
+    .from("messages")
+    .select("thread_id,role,gmail_message_id")
+    .in(
+      "thread_id",
+      sendable.map((t) => t.id),
+    );
+  if (msgErr) throw msgErr;
+  const byThread = new Map<string, MessageLite[]>();
+  for (const m of (msgs ?? []) as Array<MessageLite & { thread_id: string }>)
+    byThread.set(m.thread_id, [...(byThread.get(m.thread_id) ?? []), m]);
+
+  // Exactly one message, ours: the welcome. Anything else means they
+  // replied, or they've already been nudged.
+  const due = sendable.filter((t) => {
+    const list = byThread.get(t.id) ?? [];
+    return list.length === 1 && list[0].role === "ai";
+  });
+  if (due.length === 0) return { sent: 0, skippedDryRun: all.length - sendable.length };
+
+  const { data: leads } = await sb
+    .from("leads")
+    .select("email,full_name")
+    .in(
+      "email",
+      due.map((t) => t.user_email),
+    );
+  const names = new Map(
+    ((leads ?? []) as Array<{ email: string; full_name: string | null }>).map((l) => [
+      l.email.toLowerCase(),
+      l.full_name,
+    ]),
+  );
 
   let sent = 0;
-  let skippedDryRun = 0;
-  for (const t of (threads ?? []) as ThreadLite[]) {
-    const { data: msgs } = await sb
-      .from("messages")
-      .select("role,gmail_message_id")
-      .eq("thread_id", t.id);
-    const list = (msgs ?? []) as MessageLite[];
-    // Exactly one message, ours: the welcome. Anything else means they
-    // replied, or they've already been nudged.
-    if (list.length !== 1 || list[0].role !== "ai") continue;
-    if (!wouldSend([t.user_email])) {
-      skippedDryRun += 1;
-      continue;
-    }
-
+  for (const t of due) {
     // Claim the thread so overlapping cron runs nudge it once.
-    const { data: claimed } = await sb
-      .from("threads")
-      .update({ last_processed_at: new Date().toISOString() })
-      .eq("id", t.id)
-      .is("last_processed_at", null)
-      .select("id");
-    if (!claimed?.length) continue;
+    const claimed = await claimRow("threads", t.id, { last_processed_at: new Date().toISOString() }, (q) =>
+      q.is("last_processed_at", null),
+    ).catch(() => false);
+    if (!claimed) continue;
 
-    const { data: lead } = await sb
-      .from("leads")
-      .select("full_name")
-      .ilike("email", t.user_email)
-      .limit(1)
-      .maybeSingle();
-    const first = String(lead?.full_name ?? "").split(" ")[0] || "there";
-    const text = nudgeText(first);
-    const res = await dispatch({
+    await dispatch({
       kind: "lead_nudge",
       to: t.user_email,
       subject: t.subject ?? "Who are you hiring?",
-      text,
-      replyToMessageId: list[0].gmail_message_id,
-    });
-    await appendMessage({
+      text: nudgeText(firstName(names.get(t.user_email.toLowerCase()), "there")),
+      replyToMessageId: byThread.get(t.id)![0].gmail_message_id,
       threadId: t.id,
-      role: "ai",
-      content: text,
-      gmailMessageId: res.messageId,
     });
     sent += 1;
   }
-  return { sent, skippedDryRun };
+  return { sent, skippedDryRun: all.length - sendable.length };
 }

@@ -84,6 +84,34 @@ export function HowdyChatWidget() {
     return () => window.removeEventListener("keydown", onKey);
   }, [view]);
 
+  /** POST the conversation (plus contact details on handoff); throws on error. */
+  async function postChat(
+    history: ChatMessage[],
+    contact?: { name: string; email: string },
+  ): Promise<{ reply: string; done?: boolean; needsContact?: boolean }> {
+    const res = await fetch("/api/howdy/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: history.map(({ role, content }) => ({ role, content })),
+        sessionId: getSessionId(),
+        ...(contact ? { contact } : {}),
+      }),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      reply?: string;
+      done?: boolean;
+      needsContact?: boolean;
+      error?: string;
+    };
+    if (!res.ok || !data.reply) {
+      throw new Error(
+        data.error ?? (contact ? "Couldn't send that — mind trying again?" : "Howdy is unreachable."),
+      );
+    }
+    return { reply: data.reply, done: data.done, needsContact: data.needsContact };
+  }
+
   async function send() {
     const trimmed = input.trim();
     if (!trimmed || locked) return;
@@ -96,28 +124,9 @@ export function HowdyChatWidget() {
     setPending(true);
     setError(null);
     try {
-      const res = await fetch("/api/howdy/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: next.map(({ role, content }) => ({ role, content })),
-          sessionId: getSessionId(),
-        }),
-      });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        throw new Error(data.error ?? "Howdy is unreachable.");
-      }
-      const data = (await res.json()) as {
-        reply: string;
-        done?: boolean;
-        needsContact?: boolean;
-      };
+      const data = await postChat(next);
       setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
       setNeedsContact(!!data.needsContact);
-      if (data.done) setDone(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
@@ -131,28 +140,10 @@ export function HowdyChatWidget() {
     setContactPending(true);
     setContactError(null);
     try {
-      const res = await fetch("/api/howdy/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: messages.map(({ role, content }) => ({ role, content })),
-          sessionId: getSessionId(),
-          contact: { name, email },
-        }),
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        reply?: string;
-        done?: boolean;
-        error?: string;
-      };
-      const reply = data.reply;
-      if (!res.ok || !reply) {
-        throw new Error(data.error ?? "Couldn't send that — mind trying again?");
-      }
-      setMessages((m) => [...m, { role: "assistant", content: reply }]);
+      const data = await postChat(messages, { name, email });
+      setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
       if (data.done) {
         setDone(true);
-        setNeedsContact(false);
         endSession();
       }
     } catch (err) {

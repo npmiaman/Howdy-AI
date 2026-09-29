@@ -14,18 +14,15 @@ import {
   sendDueCheckins,
 } from "@/lib/howdy/post-match";
 import {
-  claimConnect,
-  claimPending,
   listDueConnects,
   listDuePendingMatches,
   listFallbackDue,
   listRequestsInPhase,
   markPendingProcessed,
-  releaseConnect,
-  releasePending,
 } from "@/lib/howdy/scheduler";
 import type { PendingMatch } from "@/lib/howdy/scheduler";
 import { getSupabaseAdmin } from "@/lib/supabase/client";
+import { errorMessage } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -43,7 +40,7 @@ async function schemaProblem(): Promise<string | null> {
       .limit(1);
     return error ? error.message : null;
   } catch (err) {
-    return err instanceof Error ? err.message : String(err);
+    return errorMessage(err);
   }
 }
 
@@ -87,6 +84,16 @@ export async function GET(request: Request) {
 
   const results: Array<{ step: string; id?: string; detail?: string }> = [];
 
+  // Stop starting new work well before Vercel's 60s kill; whatever's left is
+  // picked up by the next run (every step is claimed, so nothing doubles up).
+  const stopAt = Date.now() + Number(process.env.HOWDY_CRON_BUDGET_MS ?? 45_000);
+  const outOfTime = () => {
+    if (Date.now() < stopAt) return false;
+    if (!results.some((r) => r.step === "time_budget"))
+      results.push({ step: "time_budget", detail: "stopped early; next run continues" });
+    return true;
+  };
+
   // ---- 0a. Self-heal freelancer embeddings. Any freelancer imported without
   //          one (e.g. a CSV upload) gets embedded now, so matching can never
   //          silently break on a missing vector. Cheap no-op when all present.
@@ -98,7 +105,7 @@ export async function GET(request: Request) {
         detail: `${embedded} embedded, ${failed} failed`,
       });
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = errorMessage(err);
     console.error("[process-pending] ensureFreelancerEmbeddings:", detail);
     results.push({ step: "error_embeddings", detail });
   }
@@ -109,6 +116,7 @@ export async function GET(request: Request) {
   //         Each delivery is claimed, so overlapping runs send it once. ----
   const fallbackDue = await listFallbackDue();
   for (const request of fallbackDue) {
+    if (outOfTime()) break;
     try {
       const { delivered, skipped, count, provisional } =
         await deliverFallbackShortlist(request);
@@ -128,7 +136,7 @@ export async function GET(request: Request) {
           : "no freelancers matched the brief",
       });
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
+      const detail = errorMessage(err);
       console.error(`[process-pending] fallback ${request.id}:`, detail);
       results.push({ step: "error_fallback", id: request.id, detail });
     }
@@ -140,20 +148,17 @@ export async function GET(request: Request) {
     (r) => !fallbackIds.has(r.id),
   );
   for (const request of due) {
-    // Claim first (processed_at) so overlapping runs start outreach once;
-    // `phase` drives the rest. A failed start releases the claim to retry.
-    if (!(await claimPending(request.id))) continue;
+    if (outOfTime()) break;
     try {
-      const { invited, poolSize } = await startOutreach(request);
-      if (poolSize === 0) await failRequest(request);
+      const started = await startOutreach(request);
+      if (started.skipped) continue; // another run has it
       results.push({
-        step: poolSize === 0 ? "no_matches" : "started_outreach",
+        step: started.poolSize === 0 ? "no_matches" : "started_outreach",
         id: request.id,
-        detail: `invited ${invited} of ${poolSize} ranked`,
+        detail: `invited ${started.invited} of ${started.poolSize} ranked`,
       });
     } catch (err) {
-      await releasePending(request.id);
-      const detail = err instanceof Error ? err.message : String(err);
+      const detail = errorMessage(err);
       console.error(`[process-pending] startOutreach ${request.id}:`, detail);
       results.push({ step: "error_start", id: request.id, detail });
     }
@@ -170,7 +175,7 @@ export async function GET(request: Request) {
     if (timedOut > 0)
       results.push({ step: "swept_timeouts", detail: `${timedOut} timed out` });
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = errorMessage(err);
     console.error("[process-pending] sweepTimeouts:", detail);
     results.push({ step: "error_sweep", detail });
   }
@@ -178,14 +183,14 @@ export async function GET(request: Request) {
   // ---- 3. Connect intros whose short delay has elapsed → then schedule
   //         the post-match check-ins for that newly-connected match. ----
   for (const request of await listDueConnects()) {
-    if (!(await claimConnect(request.id))) continue;
+    if (outOfTime()) break;
     try {
-      const { connected } = await sendDueConnects(request);
-      if (connected > 0) {
+      const sent = await sendDueConnects(request);
+      if (!sent.skipped && sent.connected > 0) {
         results.push({
           step: "sent_connects",
           id: request.id,
-          detail: `${connected} intro(s)`,
+          detail: `${sent.connected} intro(s)`,
         });
         const { scheduled } = await schedulePostMatchCheckins(request);
         if (scheduled > 0)
@@ -196,26 +201,25 @@ export async function GET(request: Request) {
           });
       }
     } catch (err) {
-      await releaseConnect(request.id);
-      const detail = err instanceof Error ? err.message : String(err);
+      const detail = errorMessage(err);
       console.error(`[process-pending] sendDueConnects ${request.id}:`, detail);
       results.push({ step: "error_connect", id: request.id, detail });
     }
   }
 
   // ---- 4. Post-match check-ins whose 3-day delay has elapsed. ----
-  try {
+  if (!outOfTime()) try {
     const { sent } = await sendDueCheckins();
     if (sent > 0)
       results.push({ step: "sent_checkins", detail: `${sent} sent` });
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = errorMessage(err);
     console.error("[process-pending] sendDueCheckins:", detail);
     results.push({ step: "error_checkins", detail });
   }
 
   // ---- 5. Nudge recent sign-ups who never replied to the welcome email. ----
-  try {
+  if (!outOfTime()) try {
     const { sent, skippedDryRun } = await sendLeadNudges();
     if (sent > 0 || skippedDryRun > 0)
       results.push({
@@ -223,7 +227,7 @@ export async function GET(request: Request) {
         detail: `${sent} sent${skippedDryRun ? `, ${skippedDryRun} held by dry-run` : ""}`,
       });
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = errorMessage(err);
     console.error("[process-pending] sendLeadNudges:", detail);
     results.push({ step: "error_nudges", detail });
   }

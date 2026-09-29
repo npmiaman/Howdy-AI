@@ -6,6 +6,8 @@
  */
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 
+import { claimRow, type Filters } from "./claims";
+
 import type {
   CandidateStatus,
   MatchCandidate,
@@ -178,27 +180,18 @@ export async function transitionCandidate(
   extra: Record<string, unknown> = {},
 ): Promise<boolean> {
   if (!isSupabaseConfigured()) return false;
-  const sb = getSupabaseAdmin();
-  const { data, error } = await sb
-    .from("match_candidates")
-    .update({ status: to, ...extra })
-    .eq("id", candidateId)
-    .in("status", from)
-    .select("id");
-  if (error) throw error;
-  return (data ?? []).length > 0;
+  return claimRow("match_candidates", candidateId, { status: to, ...extra }, (q) =>
+    q.in("status", from),
+  );
 }
 
-/** Stamp the candidates that were put in front of the client (or clear it). */
-export async function markShown(
-  candidateIds: string[],
-  at: Date | null,
-): Promise<void> {
+/** Stamp the candidates that were put in front of the client. */
+export async function markShown(candidateIds: string[], at: Date): Promise<void> {
   if (!isSupabaseConfigured() || candidateIds.length === 0) return;
   const sb = getSupabaseAdmin();
   const { error } = await sb
     .from("match_candidates")
-    .update({ shown_to_client_at: at ? at.toISOString() : null })
+    .update({ shown_to_client_at: at.toISOString() })
     .in("id", candidateIds);
   if (error) throw error;
 }
@@ -228,29 +221,41 @@ export async function findCandidateByOutreachThread(
 }
 
 /**
- * Fallback when the provider files a reply under a new thread id: the most
- * recent invite still awaiting a reply from this sender's email address.
+ * Fallback when a reply lands under a different provider thread id: match the
+ * email's In-Reply-To / References against the invites we sent. Replies carry
+ * those headers whatever the thread id or subject says.
  */
-export async function findAwaitingCandidateBySender(
-  email: string,
+export async function findAwaitingCandidateByMessageIds(
+  messageIds: string[],
 ): Promise<MatchCandidate | null> {
-  if (!isSupabaseConfigured() || !email) return null;
-  const sb = getSupabaseAdmin();
-  const { data: people } = await sb
-    .from("freelancers")
-    .select("id")
-    .ilike("email", email);
-  const ids = (people ?? []).map((p: { id: string }) => p.id);
-  if (ids.length === 0) return null;
-  const { data, error } = await sb
+  if (!isSupabaseConfigured() || messageIds.length === 0) return null;
+  const { data, error } = await getSupabaseAdmin()
     .from("match_candidates")
     .select("*")
-    .in("freelancer_id", ids)
+    .in("outreach_message_id", messageIds)
     .in("status", AWAITING_REPLY)
     .order("invited_at", { ascending: false })
     .limit(1);
   if (error) return null;
   return data?.[0] ? rowToCandidate(data[0] as CandidateRow) : null;
+}
+
+/**
+ * Time out every invite in `candidateIds` that's still unanswered, in one
+ * conditional update. Returns the ones this call moved.
+ */
+export async function timeOutInvites(
+  candidateIds: string[],
+): Promise<Array<{ id: string; request_id: string }>> {
+  if (!isSupabaseConfigured() || candidateIds.length === 0) return [];
+  const { data, error } = await getSupabaseAdmin()
+    .from("match_candidates")
+    .update({ status: "timed_out" })
+    .in("id", candidateIds)
+    .eq("status", "invited")
+    .select("id,request_id");
+  if (error) throw error;
+  return (data ?? []) as Array<{ id: string; request_id: string }>;
 }
 
 /** Invited candidates whose reply window has elapsed (for the timeout sweep). */
@@ -272,13 +277,11 @@ export async function listTimedOutInvites(
 export async function setRequestPhase(
   requestId: string,
   phase: RequestPhase,
-  extra: { shortlistSentAt?: Date | null; connectAfter?: Date } = {},
+  extra: { connectAfter?: Date } = {},
 ): Promise<void> {
   if (!isSupabaseConfigured()) return;
   const sb = getSupabaseAdmin();
   const patch: Record<string, unknown> = { phase };
-  if (extra.shortlistSentAt !== undefined)
-    patch.shortlist_sent_at = extra.shortlistSentAt?.toISOString() ?? null;
   if (extra.connectAfter)
     patch.connect_after = extra.connectAfter.toISOString();
   const { error } = await sb
@@ -298,15 +301,10 @@ export async function claimRequestPhase(
   from: RequestPhase[],
   to: RequestPhase,
   extra: Record<string, unknown> = {},
+  where: (q: Filters) => Filters = (q) => q,
 ): Promise<boolean> {
   if (!isSupabaseConfigured()) return false;
-  const sb = getSupabaseAdmin();
-  const { data, error } = await sb
-    .from("pending_matches")
-    .update({ phase: to, ...extra })
-    .eq("id", requestId)
-    .in("phase", from)
-    .select("id");
-  if (error) throw error;
-  return (data ?? []).length > 0;
+  return claimRow("pending_matches", requestId, { phase: to, ...extra }, (q) =>
+    where(q.in("phase", from)),
+  );
 }

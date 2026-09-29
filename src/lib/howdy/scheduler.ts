@@ -7,6 +7,8 @@ import { randomInt } from "node:crypto";
 
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 
+import { CLAIM_LEASE_MS, claimRow, leaseFree } from "./claims";
+
 import type { Brief, RequestPhase } from "./types";
 import {
   FALLBACK_DELIVERY_HOURS,
@@ -16,17 +18,6 @@ import {
 
 const BUSINESS_HOURS_START = Number(process.env.HOWDY_BUSINESS_HOURS_START ?? 9); // 9 AM
 const BUSINESS_HOURS_END = Number(process.env.HOWDY_BUSINESS_HOURS_END ?? 16); // 4 PM
-
-/**
- * How long a cron step's claim holds. A run killed mid-step (Vercel's 60s
- * limit, a crash) leaves its claim behind; once it's older than this, the next
- * run can take it over instead of the request being stranded forever.
- */
-export const CLAIM_LEASE_MS = 10 * 60 * 1000;
-
-export function leaseCutoff(): string {
-  return new Date(Date.now() - CLAIM_LEASE_MS).toISOString();
-}
 
 export type PendingMatch = {
   id: string;
@@ -149,13 +140,11 @@ export async function schedulePendingMatch(
 }
 
 /**
- * Create a request that starts immediately (no lazy-match defer) and is
- * already claimed — used for rematches, which recruit right away. Its own
- * created_at restarts the 24h shortlist guarantee for the new search.
+ * Queue a request that's due right away (no lazy-match defer) — used for
+ * rematches. The cron starts it like any other request, and its own created_at
+ * restarts the 24h shortlist guarantee for the new search.
  */
-export async function createImmediateRequest(
-  args: ScheduleArgs,
-): Promise<PendingMatch> {
+export async function queueRequestNow(args: ScheduleArgs): Promise<PendingMatch> {
   const now = new Date().toISOString();
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
@@ -166,7 +155,6 @@ export async function createImmediateRequest(
       subject: args.subject ?? null,
       brief: args.brief,
       scheduled_at: now,
-      processed_at: now,
     })
     .select()
     .single();
@@ -213,67 +201,43 @@ export async function updateRequestBrief(id: string, brief: Brief): Promise<void
 // next tick) can never process the same step twice. A failed step releases
 // its claim so the next run retries it.
 
+// ------------------------------------------------------------------ claims
+// Each cron step claims its row before doing any work (see claims.ts), so
+// overlapping runs never process the same step twice; a killed run's claim
+// expires after a lease.
+
 /** Claim a due request for starting outreach (processed_at → now). */
-export async function claimPending(id: string): Promise<boolean> {
-  const { data, error } = await getSupabaseAdmin()
-    .from("pending_matches")
-    .update({ processed_at: new Date().toISOString() })
-    .eq("id", id)
-    .eq("phase", "matching")
-    .or(`processed_at.is.null,processed_at.lt.${leaseCutoff()}`)
-    .select("id");
-  if (error) throw error;
-  return (data ?? []).length > 0;
+export function claimPending(id: string): Promise<boolean> {
+  return claimRow("pending_matches", id, { processed_at: new Date().toISOString() }, (q) =>
+    q.eq("phase", "matching").or(leaseFree("processed_at")),
+  );
 }
 
-export async function releasePending(id: string): Promise<void> {
-  await getSupabaseAdmin()
-    .from("pending_matches")
-    .update({ processed_at: null })
-    .eq("id", id);
-}
-
-/** Claim a request for the 24h fallback delivery (shortlist_sent_at → now). */
-export async function claimFallback(id: string): Promise<boolean> {
-  const { data, error } = await getSupabaseAdmin()
-    .from("pending_matches")
-    .update({ shortlist_sent_at: new Date().toISOString() })
-    .eq("id", id)
-    .in("phase", ["matching", "outreach"])
-    .or(`shortlist_sent_at.is.null,shortlist_sent_at.lt.${leaseCutoff()}`)
-    .select("id");
-  if (error) throw error;
-  return (data ?? []).length > 0;
-}
-
-export async function releaseFallback(id: string): Promise<void> {
-  await getSupabaseAdmin()
-    .from("pending_matches")
-    .update({ shortlist_sent_at: null })
-    .eq("id", id);
+/**
+ * Claim the right to send a request's shortlist (shortlist_sent_at → now).
+ * Both the 24h fallback and the "third yes" path take this same claim, so a
+ * client can never get two shortlists for one request.
+ */
+export function claimShortlist(
+  id: string,
+  from: RequestPhase[] = ["matching", "outreach"],
+): Promise<boolean> {
+  return claimRow("pending_matches", id, { shortlist_sent_at: new Date().toISOString() }, (q) =>
+    q.in("phase", from).or(leaseFree("shortlist_sent_at")),
+  );
 }
 
 /**
  * Claim a due intro send by pushing connect_after one lease into the future:
  * no other run picks it up meanwhile, and if this run dies it's due again.
  */
-export async function claimConnect(id: string): Promise<boolean> {
-  const { data, error } = await getSupabaseAdmin()
-    .from("pending_matches")
-    .update({ connect_after: new Date(Date.now() + CLAIM_LEASE_MS).toISOString() })
-    .eq("id", id)
-    .eq("phase", "connecting")
-    .lte("connect_after", new Date().toISOString())
-    .select("id");
-  if (error) throw error;
-  return (data ?? []).length > 0;
-}
-
-export async function releaseConnect(id: string): Promise<void> {
-  await getSupabaseAdmin()
-    .from("pending_matches")
-    .update({ connect_after: new Date().toISOString() })
-    .eq("id", id);
+export function claimConnect(id: string): Promise<boolean> {
+  return claimRow(
+    "pending_matches",
+    id,
+    { connect_after: new Date(Date.now() + CLAIM_LEASE_MS).toISOString() },
+    (q) => q.eq("phase", "connecting").lte("connect_after", new Date().toISOString()),
+  );
 }
 
 export async function listDuePendingMatches(
@@ -289,7 +253,7 @@ export async function listDuePendingMatches(
     .from("pending_matches")
     .select("*")
     .eq("phase", "matching")
-    .or(`processed_at.is.null,processed_at.lt.${leaseCutoff()}`)
+    .or(leaseFree("processed_at"))
     .lte("scheduled_at", now.toISOString())
     .order("scheduled_at", { ascending: true });
   if (error) throw error;
@@ -321,54 +285,10 @@ export async function listFallbackDue(
     .lte("created_at", cutoff)
     .gte("created_at", floor)
     .in("phase", ["matching", "outreach"])
-    .or(`shortlist_sent_at.is.null,shortlist_sent_at.lt.${leaseCutoff()}`)
+    .or(leaseFree("shortlist_sent_at"))
     .order("created_at", { ascending: true });
   if (error) throw error;
   return (data ?? []).map(rowToPendingMatch);
-}
-
-/**
- * Has any match for this thread already been delivered? Used to flip the
- * agent into "follow-up" mode so replies-after-match don't re-trigger
- * another match-scheduling loop.
- */
-export async function lastSentMatchForThread(
-  threadId: string,
-): Promise<{
-  matchedFreelancerId: string | null;
-  processedAt: Date;
-} | null> {
-  if (isSupabaseConfigured()) {
-    const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase
-      .from("pending_matches")
-      .select("matched_freelancer_id, processed_at")
-      .eq("thread_id", threadId)
-      .not("processed_at", "is", null)
-      .order("processed_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error) {
-      console.warn("[scheduler] lastSentMatchForThread failed:", error.message);
-      return null;
-    }
-    if (!data || !data.processed_at) return null;
-    return {
-      matchedFreelancerId: data.matched_freelancer_id ?? null,
-      processedAt: new Date(data.processed_at),
-    };
-  }
-  const found = memoryStore
-    .filter((pm) => pm.threadId === threadId && pm.processedAt !== null)
-    .sort(
-      (a, b) =>
-        (b.processedAt?.getTime() ?? 0) - (a.processedAt?.getTime() ?? 0),
-    )[0];
-  if (!found) return null;
-  return {
-    matchedFreelancerId: found.matchedFreelancerId,
-    processedAt: found.processedAt!,
-  };
 }
 
 export async function listAllPending(): Promise<PendingMatch[]> {

@@ -8,7 +8,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { isAgentMailConfigured, sendFreshEmail } from "@/lib/agentmail/client";
-import { upsertLead } from "@/lib/howdy/leads";
+import { requestMeta, upsertLead } from "@/lib/howdy/leads";
 import { saveMemories } from "@/lib/howdy/memories";
 import { notifyOps } from "@/lib/howdy/notify";
 import { schedulePendingMatch } from "@/lib/howdy/scheduler";
@@ -20,8 +20,9 @@ import {
   saveBrief,
   type ThreadRow,
 } from "@/lib/howdy/threads";
-import type { Brief } from "@/lib/howdy/types";
+import { type Brief, PROMISE_HOURS } from "@/lib/howdy/types";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
+import { errorMessage, firstName as firstNameOf } from "@/lib/utils";
 
 import { withRetry } from "./retry";
 
@@ -33,15 +34,10 @@ export function webThreadKey(sessionKey: string): string {
 const NameSchema = z.string().trim().min(1).max(120);
 const EmailSchema = z.string().trim().email().max(200);
 
-const ALREADY_SENT_REPLY =
-  "You're all set — your brief is already in your inbox, and your shortlist lands in that thread within 24 hours.";
+const ALREADY_SENT_REPLY = `You're all set — your brief is already in your inbox, and your shortlist lands in that thread within ${PROMISE_HOURS} hours.`;
 
 function fail(status: number, error: string) {
   return NextResponse.json({ error }, { status });
-}
-
-function errText(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
 }
 
 /**
@@ -95,7 +91,7 @@ export function handoffEmail(firstName: string, brief: Brief): string {
     "",
     ...briefBullets(brief),
     "",
-    "I'm on it — your shortlist lands in this thread within 24 hours. Reply here anytime to add details.",
+    `I'm on it — your shortlist lands in this thread within ${PROMISE_HOURS} hours. Reply here anytime to add details.`,
     "",
     "Howdy",
   ].join("\n");
@@ -175,7 +171,7 @@ async function persistHandoff(args: {
     );
     threadId = thread.id;
   } catch (e) {
-    problems.push(`email thread: ${errText(e)}`);
+    problems.push(`email thread: ${errorMessage(e)}`);
   }
 
   if (threadId) {
@@ -204,7 +200,7 @@ async function persistHandoff(args: {
       });
       await withRetry(() => saveBrief(threadId!, args.brief), "saveBrief");
     } catch (e) {
-      problems.push(`transcript/brief: ${errText(e)}`);
+      problems.push(`transcript/brief: ${errorMessage(e)}`);
     }
 
     try {
@@ -217,7 +213,7 @@ async function persistHandoff(args: {
         brief: args.brief,
       });
     } catch (e) {
-      problems.push(`schedule match: ${errText(e)}`);
+      problems.push(`schedule match: ${errorMessage(e)}`);
     }
   } else {
     problems.push("schedule match: skipped (no email thread)");
@@ -284,7 +280,7 @@ export async function handOffToEmail(args: {
     web = found;
     claimed = await claimHandoff(web.id);
   } catch (e) {
-    console.error("[howdy/chat] handoff lookup/claim failed:", errText(e));
+    console.error("[howdy/chat] handoff lookup/claim failed:", errorMessage(e));
     return fail(503, "I hit a snag saving that. Mind trying again?");
   }
   if (!claimed) {
@@ -292,7 +288,7 @@ export async function handOffToEmail(args: {
   }
 
   const brief = web.brief;
-  const firstName = name.data.split(/\s+/)[0];
+  const firstName = firstNameOf(name.data);
   const subject = handoffSubject(brief);
   const text = handoffEmail(firstName, brief);
 
@@ -301,8 +297,7 @@ export async function handOffToEmail(args: {
     company: "",
     position: "",
     email: email.data,
-    ip: args.request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
-    userAgent: args.request.headers.get("user-agent") ?? null,
+    ...requestMeta(args.request),
     source: "web-chat",
   });
 
@@ -310,7 +305,7 @@ export async function handOffToEmail(args: {
   try {
     sent = await sendFreshEmail({ to: email.data, subject, text });
   } catch (e) {
-    console.error("[howdy/chat] handoff email failed:", errText(e));
+    console.error("[howdy/chat] handoff email failed:", errorMessage(e));
     await releaseHandoff(web.id);
     return fail(502, "I couldn't send the email just now — mind hitting send again?");
   }
@@ -326,7 +321,7 @@ export async function handOffToEmail(args: {
     sent,
   });
 
-  const reply = `You're all set, ${firstName}! I just emailed your brief to ${email.data} — check your inbox. Your shortlist lands in that thread within 24 hours.`;
+  const reply = `You're all set, ${firstName}! I just emailed your brief to ${email.data} — check your inbox. Your shortlist lands in that thread within ${PROMISE_HOURS} hours.`;
   try {
     await withRetry(
       () => appendMessageDeduped({ threadId: web.id, role: "ai", content: reply }),

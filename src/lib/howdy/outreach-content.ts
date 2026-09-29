@@ -2,23 +2,14 @@
  * Email body generation for the outreach saga. Pure content — no sending.
  *   - freelancerPitch: ANONYMIZED check-in to a candidate (no client identity).
  *   - clientShortlistNote: the per-freelancer "why they fit" note for the client.
- *   - freelancerAcceptResponse / connectNotice / connectIntro: short transactional copy.
+ *   - connectIntro: the intro email; the one-line acks are fixed templates below.
  * See DECISIONS.md (2026-06-16): anonymized until accept.
  */
-import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { firstName } from "@/lib/utils";
 
-import { getChatModel } from "./llm";
-import type { Brief, Freelancer } from "./types";
+import { generateText as write } from "./generate";
+import { type Brief, type Freelancer, PROMISE_HOURS } from "./types";
 
-async function write(system: string, user: string): Promise<string> {
-  const reply = await getChatModel().invoke([
-    new SystemMessage(system),
-    new HumanMessage(user),
-  ]);
-  return (
-    typeof reply.content === "string" ? reply.content : JSON.stringify(reply.content)
-  ).trim();
-}
 
 /** What a freelancer is allowed to see before they accept — NO client identity. */
 function anonymizedBrief(brief: Brief): string {
@@ -55,7 +46,7 @@ export async function freelancerPitch(args: {
 }): Promise<string> {
   return write(
     PITCH_SYSTEM,
-    `Freelancer's first name: ${args.freelancer.name.split(" ")[0]}
+    `Freelancer's first name: ${firstName(args.freelancer.name)}
 Their role: ${args.freelancer.role}
 
 Anonymized brief (this is ALL they may see):
@@ -134,28 +125,6 @@ export async function clientShortlistEmail(args: {
   return `${intro}\n\n${notes.join("\n\n")}\n\n${outro}`;
 }
 
-const ACCEPT_REPLY_SYSTEM = `You are Howdy, replying to a freelancer who just said YES to a gig check-in. Write ONE short, warm line confirming you've noted their interest and you'll be in touch shortly if it's a fit. Do NOT yet reveal the client identity or promise the booking. No greeting/signature.`;
-
-export async function freelancerAcceptAck(
-  freelancer: Freelancer,
-): Promise<string> {
-  return write(
-    ACCEPT_REPLY_SYSTEM,
-    `Freelancer first name: ${freelancer.name.split(" ")[0]}. Write the quick acknowledgment.`,
-  );
-}
-
-const CONNECT_NOTICE_SYSTEM = `You are Howdy, telling a freelancer the client picked them and you're about to connect them directly. Write ONE short, upbeat line. This is a heads-up, not a question — they already agreed to be considered. You'll send the intro email shortly. No greeting/signature.`;
-
-export async function connectNotice(args: {
-  freelancer: Freelancer;
-  brief: Brief;
-}): Promise<string> {
-  return write(
-    CONNECT_NOTICE_SYSTEM,
-    `Freelancer first name: ${args.freelancer.name.split(" ")[0]}. Role: ${args.brief.role}. Write the heads-up.`,
-  );
-}
 
 const CONNECT_INTRO_SYSTEM = `You are Howdy, writing the intro email that connects a client and a freelancer directly (both are CC'd). Warm, brief (2-3 sentences): introduce them by first name, say in one line why they're a great fit, and hand it over for them to take from here. No signature block beyond "— Howdy".`;
 
@@ -180,15 +149,25 @@ Write the intro email.`,
 // Fixed copy (no LLM) for messages whose wording carries a promise — each one
 // describes exactly what the code does next.
 
+/** A freelancer said yes to an invite (still anonymized — no booking promised). */
+export function freelancerAcceptAck(freelancer: Freelancer): string {
+  return `Thanks ${firstName(freelancer.name)} — noted! If the client picks you, I'll be in touch to connect you directly.`;
+}
+
+/** Heads-up to a confirmed freelancer that the client picked them. */
+export function connectNotice(freelancer: Freelancer): string {
+  return `Good news, ${firstName(freelancer.name)} — the client picked you! I'm sending an intro email to you both shortly.`;
+}
+
 /** Client picked a freelancer who hasn't confirmed yet: ask for their yes. */
 export function chosenNudge(freelancer: Freelancer): string {
-  const first = freelancer.name.split(" ")[0];
+  const first = firstName(freelancer.name);
   return `Hey ${first} — good news: the client would love to work with you on this one. Still up for it? A quick yes and I'll make the intro.`;
 }
 
 /** A chosen freelancer turned it down after the client picked them. */
 export function chosenUnavailableNotice(freelancer: Freelancer): string {
-  const first = freelancer.name.split(" ")[0];
+  const first = firstName(freelancer.name);
   return `Quick update — ${first} can't take this one on after all. Reply with another name from the shortlist, or say "anyone else" and I'll line up fresh people.`;
 }
 
@@ -209,6 +188,11 @@ export function selectionAck(args: {
       `I'm checking ${names(args.pending)}'s availability now and will intro you as soon as they confirm.`,
     );
   return parts.join(" ");
+}
+
+/** A rematch search has been queued. */
+export function rematchStartedNotice(): string {
+  return `On it — I'll line up fresh people (nobody you've already seen) and send them over within ${PROMISE_HOURS} hours.`;
 }
 
 /** No one in the network fits (or everyone who does has been tried). */

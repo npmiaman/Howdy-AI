@@ -74,10 +74,11 @@ export type AgentMailIncomingMessage = {
   threadId: string;
   fromEmail: string;
   fromName: string | null;
-  toEmail: string;
   /** Every address on To / Cc (lowercased), for "was Howdy addressed?" checks. */
   to: string[];
   cc: string[];
+  /** In-Reply-To + References: the ids of the messages this one answers. */
+  replyToIds: string[];
   subject: string;
   /** Body with quoted history removed if the platform provided it. */
   body: string;
@@ -135,9 +136,12 @@ export function parseInboundPayload(raw: any): AgentMailIncomingMessage {
     threadId: String(m.thread_id ?? m.threadId ?? m.id ?? ""),
     fromEmail,
     fromName,
-    toEmail: to[0] ?? "",
     to,
     cc,
+    replyToIds: [
+      m.in_reply_to ?? m.inReplyTo,
+      ...(Array.isArray(m.references) ? m.references : []),
+    ].filter((id): id is string => typeof id === "string" && id.length > 0),
     subject: m.subject ?? "",
     body,
     receivedAt,

@@ -225,6 +225,9 @@ export const REPLY_TIMEOUT_HOURS = 6; // no-reply → pass to next-ranked (was 2
 // matches directly (flagged as still-being-confirmed — see clientShortlistEmail).
 export const FALLBACK_DELIVERY_HOURS = 20;
 
+// What we tell clients: a shortlist within this many hours of their request.
+export const PROMISE_HOURS = 24;
+
 // Don't resurrect ancient stalled requests with the fallback — only ones from
 // the recent past that genuinely haven't been delivered.
 export const FALLBACK_MAX_AGE_HOURS = 72;
