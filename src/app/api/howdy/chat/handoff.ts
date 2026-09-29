@@ -44,8 +44,16 @@ function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-export function handoffSubject(brief: Brief): string {
-  return brief.role ? `Your Howdy brief: ${brief.role}` : "Your Howdy brief";
+/**
+ * Dated, so a returning client's new brief starts its own conversation: email
+ * threads are resolved by sender + subject, and an undated subject would land
+ * a second video-editor brief on the first one's thread.
+ */
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+export function handoffSubject(brief: Brief, now = new Date()): string {
+  const date = `${now.getUTCDate()} ${MONTHS[now.getUTCMonth()]}`;
+  return `Your Howdy brief: ${brief.role ?? "your project"} (${date})`;
 }
 
 function clip(s: string, max = 220): string {

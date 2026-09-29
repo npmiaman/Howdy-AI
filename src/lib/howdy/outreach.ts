@@ -453,21 +453,27 @@ async function freelancerMap(
   return new Map(list.map((f) => [f.id, f]));
 }
 
+/**
+ * The message to reply to so an email lands in the client's conversation:
+ * their latest email if they've sent one, otherwise our latest (e.g. a web-chat
+ * handoff thread, where the transcript has no email ids).
+ */
 export async function lastInboundMessageId(
   threadId: string | null,
 ): Promise<string | null> {
   if (!threadId || !isSupabaseConfigured()) return null;
   const sb = getSupabaseAdmin();
-  const { data } = await sb
-    .from("messages")
-    .select("gmail_message_id")
-    .eq("thread_id", threadId)
-    .eq("role", "human")
-    .not("gmail_message_id", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data?.gmail_message_id ?? null;
+  const latest = async (human: boolean) => {
+    let q = sb
+      .from("messages")
+      .select("gmail_message_id")
+      .eq("thread_id", threadId)
+      .not("gmail_message_id", "is", null);
+    if (human) q = q.eq("role", "human");
+    const { data } = await q.order("created_at", { ascending: false }).limit(1);
+    return (data?.[0]?.gmail_message_id as string | undefined) ?? null;
+  };
+  return (await latest(true)) ?? (await latest(false));
 }
 
 /**

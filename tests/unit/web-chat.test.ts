@@ -167,7 +167,7 @@ describe("website chat → email handoff", () => {
     expect(mail).toHaveLength(1);
     expect(fakeMail.sent).toHaveLength(1);
     const handoff = mail[0];
-    expect(handoff.subject).toBe("Your Howdy brief: Video Editor");
+    expect(handoff.subject).toBe("Your Howdy brief: Video Editor (29 Sep)");
     expect(handoff.text).toMatch(/^Hey Dana,/);
     expect(handoff.text).toContain("- Role: Video Editor");
     expect(handoff.text).toContain("- Deadline: 2 weeks");
@@ -181,7 +181,7 @@ describe("website chat → email handoff", () => {
     const thread = table("threads").find((t) => t.gmail_thread_id === handoff.threadId);
     expect(thread).toMatchObject({
       user_email: EMAIL,
-      subject: "Your Howdy brief: Video Editor",
+      subject: "Your Howdy brief: Video Editor (29 Sep)",
       brief: { role: "Video Editor", deadline: "2 weeks", budget_usd_per_hour_max: 60 },
     });
     const msgs = table("messages").filter((m) => m.thread_id === thread!.id);
@@ -200,7 +200,7 @@ describe("website chat → email handoff", () => {
     expect(pending[0]).toMatchObject({
       thread_id: thread!.id,
       user_email: EMAIL,
-      subject: "Your Howdy brief: Video Editor",
+      subject: "Your Howdy brief: Video Editor (29 Sep)",
       processed_at: null,
       brief: { role: "Video Editor" },
     });
@@ -278,4 +278,45 @@ describe("website chat → email handoff", () => {
       table("match_candidates").filter((c) => c.request_id === request.id).length,
     ).toBeGreaterThan(0);
   });
+
+  it("the shortlist lands in the handoff thread, not a new email", async () => {
+    const v = await readyVisitor();
+    await v.contact("Dana Client", EMAIL);
+    const handoff = fakeMail.last(EMAIL)!;
+    process.env.HOWDY_OUTREACH_DRYRUN = "false";
+    roster();
+    advance(3 * 60 * MIN + MIN);
+    await runCron(); // outreach starts
+    advance(17 * 60 * MIN);
+    await runCron(); // nobody replied → 24h fallback shortlist
+    const shortlist = fakeMail.last(EMAIL)!;
+    expect(shortlist.text).toMatch(/top \d matches|strongest match/i);
+    expect(shortlist.kind).toBe("reply");
+    expect(shortlist.threadId).toBe(handoff.threadId);
+  });
+
+  it("a reply to the handoff email before recruiting starts is a status update, not a second match", async () => {
+    const v = await readyVisitor();
+    await v.contact("Dana Client", EMAIL);
+    const { postWebhook } = await import("../helpers");
+    const res = await postWebhook(
+      fakeMail.inbound({ from: EMAIL, text: "Oh, and they should know After Effects", replyTo: fakeMail.last(EMAIL) }),
+    );
+    expect(res.body.action).toBe("status_update");
+    expect(table("pending_matches")).toHaveLength(1);
+  });
+
+  it("a returning client's new brief starts its own conversation", async () => {
+    const first = await readyVisitor();
+    await first.contact("Dana Client", EMAIL);
+    advance(2 * 24 * 60 * MIN);
+    const second = visitor("sess-web-2");
+    await second.say("I need a video editor");
+    await second.say("It's a launch film for our fintech app, $60/hr, in 2 weeks, senior");
+    await second.contact("Dana Client", EMAIL);
+    const requests = table("pending_matches");
+    expect(requests).toHaveLength(2);
+    expect(requests[0].thread_id).not.toBe(requests[1].thread_id);
+  });
 });
+
