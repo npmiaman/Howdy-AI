@@ -21,6 +21,8 @@ const UNIQUE: Record<string, string[][]> = {
   match_candidates: [["request_id", "freelancer_id"]],
   post_match_checkins: [["request_id", "candidate_id", "party", "round"]],
   freelancers: [["id"]],
+  billable_intros: [["candidate_id"]],
+  email_suppressions: [["email"]],
 };
 
 const DEFAULTS: Record<string, () => Row> = {
@@ -66,6 +68,7 @@ const DEFAULTS: Record<string, () => Row> = {
   messages: () => ({ gmail_message_id: null }),
   freelancers: () => ({ embedding: null }),
   freelancer_applications: () => ({ status: "pending", reviewed_at: null }),
+  billable_intros: () => ({ invoiced_at: null, fee_usd: 50 }),
 };
 
 const CASCADE: Record<string, Array<{ table: string; fk: string }>> = {

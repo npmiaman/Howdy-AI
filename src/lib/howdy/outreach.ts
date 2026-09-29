@@ -17,6 +17,7 @@ import { z } from "zod";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 import { firstName } from "@/lib/utils";
 
+import { recordBillableIntro } from "./billing";
 import { leaseFree, releaseClaim } from "./claims";
 import {
   claimForInvite,
@@ -582,6 +583,12 @@ export async function sendDueConnects(
         text: intro,
       });
       await transitionCandidate(c.id, ["connecting"], "connected");
+      await recordBillableIntro({
+        requestId: request.id,
+        candidateId: c.id,
+        clientEmail: request.userEmail,
+        freelancerId: f.id,
+      });
       connected += 1;
     }
     if (connecting.length > 0) {

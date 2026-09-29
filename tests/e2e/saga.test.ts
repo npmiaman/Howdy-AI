@@ -151,6 +151,11 @@ describe("happy path: brief → recruit → shortlist → intro → check-in →
     expect(intro.subject).toMatch(/connecting you with/i);
     expect(intro.cc).toContain(chosenEmail);
     expect(requests()[0].phase).toBe("connected");
+    // The shortlist stated the price, and the intro is recorded as billable.
+    expect(shortlist.text).toMatch(/\$50 for each creative/);
+    const billed = table("billable_intros");
+    expect(billed).toHaveLength(1);
+    expect(billed[0]).toMatchObject({ client_email: CLIENT, fee_usd: 50, invoiced_at: null });
 
     // 3 days later, both sides get a check-in.
     advance(3 * DAY + MIN);

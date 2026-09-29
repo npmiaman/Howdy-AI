@@ -7,6 +7,7 @@
  */
 import { firstName } from "@/lib/utils";
 
+import { pricingNote } from "./billing";
 import { generateText as write } from "./generate";
 import { type Brief, type Freelancer, PROMISE_HOURS } from "./types";
 
@@ -120,7 +121,7 @@ export async function clientShortlistEmail(args: {
     intro = `Good news — I've lined up 3 creatives who are confirmed available and genuinely keen on your project:`;
   }
 
-  const outro = `Reply with the name(s) you'd like to connect with — one or more is totally fine — and I'll make the intro.`;
+  const outro = `Reply with the name(s) you'd like to connect with — one or more is totally fine — and I'll make the intro.\n\n${pricingNote()}`;
 
   return `${intro}\n\n${notes.join("\n\n")}\n\n${outro}`;
 }
