@@ -47,12 +47,16 @@ import {
   freelancerAcceptAck,
   freelancerPitch,
   noMatchNotice,
+  progressNote,
   selectionAck,
+  templatePitch,
 } from "./outreach-content";
+import { hitRateLimit } from "./rate-limit";
 import {
   claimConnect,
   claimPending,
   claimShortlist,
+  getPendingById,
   type PendingMatch,
   queueRequestNow,
 } from "./scheduler";
@@ -63,7 +67,9 @@ import {
   type CandidateStatus,
   type Freelancer,
   type MatchCandidate,
+  FALLBACK_DELIVERY_HOURS,
   INITIAL_INVITES,
+  PROMISE_HOURS,
   REPLY_TIMEOUT_HOURS,
   SHORTLIST_TARGET,
 } from "./types";
@@ -101,7 +107,7 @@ export async function startOutreach(
       ranked: ranked.map((r, i) => ({ ...r, rank: i })),
     });
     await setRequestPhase(request.id, "outreach");
-    const invited = await refillInvites(request.id, request.brief);
+    const invited = await refillInvites(request);
     return { skipped: false, invited, poolSize: ranked.length };
   } catch (err) {
     await releaseClaim("pending_matches", request.id, { processed_at: null });
@@ -141,8 +147,10 @@ export async function startRematch(args: {
 async function inviteCandidates(
   candidates: MatchCandidate[],
   freelancers: FreelancerMap,
-  brief: Brief,
+  request: PendingMatch,
 ): Promise<number> {
+  const brief = request.brief;
+  const identity = await clientIdentity(request.userEmail);
   const claimed = (
     await Promise.all(candidates.map(async (c) => ((await claimForInvite(c.id)) ? c : null)))
   ).filter((c): c is MatchCandidate => c !== null);
@@ -155,7 +163,7 @@ async function inviteCandidates(
           kind: "freelancer_invite",
           to: f.email,
           subject: `Quick one: are you open to a ${brief.role ?? "creative"} gig?`,
-          text: `${await freelancerPitch({ freelancer: f, brief })}\n\n${OPT_OUT_LINE}`,
+          text: `${await safePitch(f, brief, identity)}\n\n${OPT_OUT_LINE}`,
         });
         await recordOutreach({
           candidateId: c.id,
@@ -174,7 +182,8 @@ async function inviteCandidates(
 }
 
 /** Keep the outreach pool topped up to INITIAL_INVITES outstanding+accepted. */
-async function refillInvites(requestId: string, brief: Brief): Promise<number> {
+async function refillInvites(request: PendingMatch): Promise<number> {
+  const requestId = request.id;
   let candidates = await listCandidates(requestId);
   const freelancers = await getFreelancerMap(candidates.map((c) => c.freelancerId));
   let invited = 0;
@@ -190,7 +199,7 @@ async function refillInvites(requestId: string, brief: Brief): Promise<number> {
     invited += await inviteCandidates(
       next.filter((x) => freelancers.has(x.freelancerId)),
       freelancers,
-      brief,
+      request,
     );
     candidates = await listCandidates(requestId);
   }
@@ -239,7 +248,7 @@ export async function handleFreelancerDecision(args: {
 
   if (!accepted) {
     if (request.phase === "outreach") {
-      await refillInvites(request.id, request.brief);
+      await refillInvites(request);
       await maybeFinalizeShortlist(request);
     }
     return { outcome: "declined", shortlistReady: false };
@@ -264,7 +273,7 @@ export async function handleFreelancerDecision(args: {
     return { outcome: "accepted", shortlistReady: sent };
   }
   // Not enough yet — make sure we keep enough invites outstanding.
-  await refillInvites(request.id, request.brief);
+  await refillInvites(request);
   return { outcome: "accepted", shortlistReady: false };
 }
 
@@ -364,7 +373,7 @@ export async function deliverFallbackShortlist(request: PendingMatch): Promise<{
     const freelancers = await getFreelancerMap(shown.map((c) => c.freelancerId));
     if (provisional) {
       const uncontacted = shown.filter((c) => c.status === "queued" && freelancers.has(c.freelancerId));
-      await inviteCandidates(uncontacted, freelancers, request.brief);
+      await inviteCandidates(uncontacted, freelancers, request);
     }
     const count = await deliverShortlist(request, shown, {
       fewerThanTarget: shown.length < SHORTLIST_TARGET,
@@ -398,7 +407,7 @@ export async function sweepTimeouts(
   // Refill / finalize each affected request.
   for (const reqId of new Set(moved.map((c) => c.request_id))) {
     const req = requestsById.get(reqId)!;
-    await refillInvites(reqId, req.brief);
+    await refillInvites(req);
     await maybeFinalizeShortlist(req);
   }
   return { timedOut: moved.length };
@@ -419,7 +428,69 @@ async function maybeFinalizeShortlist(request: PendingMatch): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 4b. One honest progress note while recruiting runs long (8h+ without a
+//     shortlist). Once per request; goes through tellClient, so it respects
+//     dry-run, opt-outs and human takeover.
+// ---------------------------------------------------------------------------
+const PROGRESS_AFTER_HOURS = 8;
+
+export async function sendProgressNotes(): Promise<{ sent: number }> {
+  if (!isSupabaseConfigured()) return { sent: 0 };
+  const now = Date.now();
+  const { data, error } = await getSupabaseAdmin()
+    .from("pending_matches")
+    .select("id")
+    .eq("phase", "outreach")
+    .is("shortlist_sent_at", null)
+    .lte("created_at", new Date(now - PROGRESS_AFTER_HOURS * 3_600_000).toISOString())
+    .gte("created_at", new Date(now - FALLBACK_DELIVERY_HOURS * 3_600_000).toISOString());
+  if (error) throw error;
+  let sent = 0;
+  for (const { id } of (data ?? []) as Array<{ id: string }>) {
+    if (!(await hitRateLimit(`progress:${id}`, { max: 1, window: 7 * 86_400 }))) continue;
+    const request = await getPendingById(id);
+    if (!request) continue;
+    const confirmed = (await listCandidates(id)).filter((c) => c.status === "accepted").length;
+    const hours = Math.max(1, Math.ceil(PROMISE_HOURS - (now - request.createdAt.getTime()) / 3_600_000));
+    if ((await tellClient(request, "client_progress", progressNote(confirmed, hours))).delivered) sent += 1;
+  }
+  return { sent };
+}
+
 // ------------------------------------------------------------------ helpers
+const WEBMAIL = /^(gmail|googlemail|yahoo|ymail|outlook|hotmail|live|msn|icloud|me|mac|proton|protonmail|aol|gmx|zoho|qq|163)$/i;
+const GENERIC = /^(info|hello|hi|contact|team|admin|sales|hr|mail|office|studio|hey)$/i;
+
+/** Words that would identify the client to a freelancer: company, domain, name. */
+async function clientIdentity(email: string): Promise<string[]> {
+  const [local, domain = ""] = email.toLowerCase().split("@");
+  const tokens = new Set<string>();
+  const root = domain.split(".")[0];
+  if (root && !WEBMAIL.test(root)) tokens.add(root);
+  for (const part of local.split(/[._+-]/)) if (part.length >= 4 && !GENERIC.test(part)) tokens.add(part);
+  if (isSupabaseConfigured()) {
+    const { data } = await getSupabaseAdmin()
+      .from("leads")
+      .select("company")
+      .ilike("email", email)
+      .limit(1)
+      .maybeSingle();
+    const company = String(data?.company ?? "").toLowerCase().trim();
+    if (company.length >= 3) tokens.add(company);
+  }
+  return [...tokens];
+}
+
+/** The written pitch, unless it names the client — then the fixed-words version. */
+async function safePitch(freelancer: Freelancer, brief: Brief, identity: string[]): Promise<string> {
+  const pitch = await freelancerPitch({ freelancer, brief });
+  const lower = pitch.toLowerCase();
+  const leak = identity.find((t) => new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(lower));
+  if (!leak) return pitch;
+  console.warn(`[outreach] pitch mentioned the client ("${leak}"); sent the fixed-words version`);
+  return templatePitch(freelancer, brief);
+}
 /**
  * The message to reply to so an email lands in the client's conversation:
  * their latest email if they've sent one, otherwise our latest (e.g. a web-chat
@@ -512,7 +583,7 @@ export async function handleClientSelection(args: {
     } else if (["invited", "timed_out", "queued"].includes(c.status)) {
       // Normally already invited when shown; a queued one means that invite
       // never went out, so send it first.
-      if (c.status === "queued") await inviteCandidates([c], freelancers, request.brief);
+      if (c.status === "queued") await inviteCandidates([c], freelancers, request);
       if (await transitionCandidate(c.id, ["invited", "timed_out"], "chosen")) {
         await dispatch({
           kind: "freelancer_chosen_nudge",

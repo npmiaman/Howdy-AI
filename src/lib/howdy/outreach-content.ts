@@ -206,6 +206,34 @@ export function selectionAck(args: {
   return parts.join(" ");
 }
 
+/**
+ * A pitch in fixed words, used when the written one might reveal the client.
+ * Deliberately leaves out the project description (it can carry a name).
+ */
+export function templatePitch(freelancer: Freelancer, brief: Brief): string {
+  const facts = [
+    brief.domain ? `It's in ${brief.domain}` : "",
+    brief.deadline ? `the timeline is ${brief.deadline}` : "",
+    brief.budget_usd_per_hour_max ? `budget is up to $${brief.budget_usd_per_hour_max}/hr` : "",
+  ].filter(Boolean);
+  return [
+    `Hi ${firstName(freelancer.name)}, quick one: are you open to a ${brief.role ?? "creative"} gig?`,
+    facts.length ? `${facts.join(", ")}.` : "",
+    brief.references?.length ? `The style they like: ${brief.references.join(", ")}.` : "",
+    "Reply yes or no. A yes means I'll share the full details and connect you.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** One honest update while recruiting runs long. */
+export function progressNote(confirmed: number, hours: number): string {
+  const wait = `Your shortlist will reach you within ${hours} hour${hours === 1 ? "" : "s"}.`;
+  return confirmed > 0
+    ? `Quick update: ${confirmed} of the creatives I reached out to ${confirmed === 1 ? "has" : "have"} confirmed so far, and I'm waiting on one or two more. ${wait}`
+    : `Quick update: I'm still lining people up for you. ${wait}`;
+}
+
 /** Holding reply when a conversation is handed to a person on the team. */
 export function humanHandoverNotice(): string {
   return "That one's for my teammate, so I've looped them in. They'll reply here soon.";
