@@ -7,7 +7,11 @@ import { SiteHeader } from "@/components/site-header";
 
 // Banner + header travel together: while the banner is up, the sticky
 // header pins 40px down; once dismissed it pins back to the very top.
-export function HomeChrome() {
+export function HomeChrome({
+  variant = "company",
+}: {
+  variant?: "company" | "freelancer";
+}) {
   const [bannerVisible, setBannerVisible] = useState(true);
 
   return (
@@ -16,7 +20,7 @@ export function HomeChrome() {
         <RebrandBanner onDismiss={() => setBannerVisible(false)} />
       )}
       <SiteHeader
-        variant="company"
+        variant={variant}
         theme="light"
         offsetForBanner={bannerVisible}
       />

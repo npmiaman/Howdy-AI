@@ -63,8 +63,8 @@ function mergeBriefs(prev: Brief, next: Brief): Brief {
 /**
  * NOTE: this and `briefIsActionable` below are NO LONGER the matching gate.
  * The live gate is `assessBrief().allResolved` in assessor.ts, which requires
- * every field to be clear (or explicitly not-applicable) and detects vague
- * answers. These two are kept only as lightweight, LLM-free readouts for
+ * the REQUIRED_FIELDS to be clear (or explicitly not-applicable) and detects
+ * vague answers. These two are kept only as lightweight, LLM-free readouts for
  * traces/tests.
  */
 export function briefCompleteness(brief: Brief): {

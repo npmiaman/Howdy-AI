@@ -184,6 +184,19 @@ export const FIELD_PRIORITY: FieldSpec[] = [
   },
 ];
 
+/**
+ * The fields a brief needs before Howdy starts recruiting. Everything else in
+ * FIELD_PRIORITY sharpens ranking when the client volunteers it, but isn't
+ * worth another round-trip: with all twelve required, no real client ever
+ * reached matching (see DECISIONS.md 2026-09-29).
+ */
+export const REQUIRED_FIELDS: (keyof Brief)[] = [
+  "description",
+  "role",
+  "deadline",
+  "budget_usd_per_hour_max",
+];
+
 export type FieldStatus = "clear" | "vague" | "missing" | "not_applicable";
 
 export type FieldAssessment = {
@@ -204,7 +217,21 @@ export type BriefAssessment = {
 // ---------------------------------------------------------------------------
 export const SHORTLIST_TARGET = 3; // accepts needed before we go to the client
 export const INITIAL_INVITES = 3; // freelancers invited up front
-export const REPLY_TIMEOUT_HOURS = 24; // no-reply → pass to next-ranked
+export const REPLY_TIMEOUT_HOURS = 6; // no-reply → pass to next-ranked (was 24; frequent cron cycles the roster fast so a confirmed shortlist can land well inside 24h)
+
+// Hard guarantee: every actionable request gets a shortlist delivered to the
+// client within 24h. If the recruit-then-confirm flow hasn't produced one by
+// this many hours after the request came in, we deliver the best-ranked DB
+// matches directly (flagged as still-being-confirmed — see clientShortlistEmail).
+export const FALLBACK_DELIVERY_HOURS = 20;
+
+// Don't resurrect ancient stalled requests with the fallback — only ones from
+// the recent past that genuinely haven't been delivered.
+export const FALLBACK_MAX_AGE_HOURS = 72;
+
+// The "lazy match" defer never pushes outreach more than this far out, so the
+// recruit flow + the 20h fallback both fit inside the 24h promise.
+export const MAX_DEFER_HOURS = 3;
 
 export type RequestPhase =
   | "matching"
@@ -238,6 +265,8 @@ export type MatchCandidate = {
   outreachMessageId: string | null;
   invitedAt: Date | null;
   respondedAt: Date | null;
+  /** When this candidate was put in front of the client (shortlist email). */
+  shownToClientAt: Date | null;
 };
 
 /** A ranked candidate straight from the matcher, before persistence. */

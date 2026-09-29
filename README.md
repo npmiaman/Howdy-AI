@@ -1,10 +1,10 @@
 # Howdy
 
-An AI freelancer-matching service that lives entirely inside an email inbox. A hirer signs up on the marketing site, gets a welcome email from `howdyai@agentmail.to`, and from then on Howdy acts as their personal talent scout — asking clarifying questions over email and replying with a single vetted match.
+An AI talent scout that lives in your inbox. A client describes the creative they need — by email or in the website chat — and Howdy asks a few sharp questions, quietly recruits freelancers who are actually available, and emails a shortlist of three within 24 hours. Then it makes the intro and checks in on how it went.
 
 This repo holds both halves: the marketing site and the agent backend, deployed as one Next.js app on Vercel.
 
-Live: https://howdy-ai-zeta.vercel.app
+Live: https://www.bridgecreatives.co
 
 ---
 
@@ -13,20 +13,22 @@ Live: https://howdy-ai-zeta.vercel.app
 ```
 src/
 ├── app/
-│   ├── page.tsx                          ← marketing landing page
+│   ├── page.tsx, freelancers/, faq/          ← marketing site
 │   └── api/
-│       ├── lead/route.ts                 ← form submission → AgentMail welcome email
-│       ├── agentmail/webhook/route.ts    ← inbound email handler
-│       └── howdy/process-pending/route.ts← cron-driven scheduled-match worker
-├── components/                           ← marketing UI + dialogs (Hire, Contact)
+│       ├── lead/route.ts                     ← hire form → lead + welcome email
+│       ├── howdy/chat/                       ← website chat intake → email handoff
+│       ├── freelancer-apply/route.ts         ← freelancer roster applications
+│       ├── agentmail/webhook/route.ts        ← every inbound email
+│       └── howdy/process-pending/route.ts    ← cron worker that advances the saga
+├── components/                               ← UI, dialogs (Hire, Contact, Apply), chat widget
 └── lib/
-    ├── howdy/                            ← LangGraph agent, matcher, scheduler, memory
-    ├── agentmail/                        ← AgentMail SDK wrapper (send / reply / parse)
-    └── supabase/                         ← Supabase admin client
-data/freelancers.json                     ← 20 seeded freelancers
-supabase/migrations/                      ← pgvector schema + leads table
-scripts/                                  ← CLI helpers (smoketest, seed, listener)
-.github/workflows/howdy-cron.yml          ← every-minute cron via GitHub Actions
+    ├── howdy/                                ← agent, matcher, saga, routing, guardrails
+    ├── agentmail/                            ← AgentMail wrapper (send / reply / parse)
+    └── supabase/                             ← Supabase admin client
+supabase/migrations/                          ← schema, 0001 → 0006 (apply in order)
+tests/                                        ← Vitest: unit + end-to-end, all services faked
+scripts/                                      ← CLI helpers (seed, applications, backups)
+.github/workflows/howdy-cron.yml              ← scheduler for the cron worker
 ```
 
 ## Stack
@@ -34,133 +36,93 @@ scripts/                                  ← CLI helpers (smoketest, seed, list
 | Layer | Choice |
 |---|---|
 | Framework | Next.js 16 (App Router) on Vercel |
-| Styling | Tailwind v4, shadcn/ui (Radix), `tw-animate-css` |
-| Typography | Instrument Serif + Geist Mono via `next/font/google` |
+| Styling | Tailwind v4, shadcn/ui (Radix) |
 | Agent | LangGraph.js + LangChain core |
 | LLM | Gemini `gemini-flash-latest` |
 | Embeddings | Gemini `gemini-embedding-001` (768 dims) |
-| Vector DB | Supabase Postgres + pgvector |
-| Email API | [AgentMail](https://agentmail.to) (send / reply / WebSocket / webhook) |
-| Cron (production) | GitHub Actions (Vercel Hobby caps at daily) |
+| Database | Supabase Postgres + pgvector |
+| Email | [AgentMail](https://agentmail.to) — webhook in (Svix-signed), API out |
+| Tests | Vitest |
 
-## How the agent works
+## How it works
 
-```
-user emails howdyai@agentmail.to
-        │
-        ▼
-AgentMail webhook → /api/agentmail/webhook
-        │
-        ▼
-findOrCreateThread() → loadMessages() → loadMemories(userEmail)
-        │
-        ▼
-LangGraph state machine (src/lib/howdy/agent.ts):
+**1. Intake.** A client signs up (welcome email from `howdyai@agentmail.to`) and replies, or chats on the site and hands over their email. Each turn, Howdy extracts a structured brief and audits it. It starts recruiting once the four required fields — description, role, deadline, budget — are clear (`REQUIRED_FIELDS` in `types.ts`), and stops asking after six clarifying turns regardless.
 
-  START
-   │
-   ▼
-  extract  ── extracts a structured Brief (Zod schema) from the
-   │           full conversation, merging with prior turns
-   ▼
-  decide   ── briefIsActionable() requires 6+ fields incl. one
-   │           specificity signal (stack/refs/must_haves) and one
-   │           constraint signal (deadline/budget)
-   │
-   ├── not actionable → clarify ── ask one priority question, END
-   │
-   └── actionable → schedule ── pick random time in 9–16 window,
-                                save to pending_matches, ack + END
+**2. Recruiting (the saga).** The request is deferred up to 3 hours so replies feel human, then the cron worker ranks the roster (vector search + LLM rerank), invites the top 3 with an anonymized pitch, and replaces anyone who declines or doesn't answer within 6 hours. Three yeses → the client gets the shortlist.
 
-(later, when the scheduled time arrives)
+**3. The 24-hour guarantee.** If three haven't said yes by hour 20, the client gets the best we have: confirmed freelancers first, otherwise top-ranked ones flagged as "confirming availability" — and those really are invited to confirm. Nobody who declined is ever shown.
 
-GitHub Actions cron → /api/howdy/process-pending
-        │
-        ▼
-runScheduledMatch(brief)
-   │
-   ├── findBestMatch():  hard filter (budget/tz)
-   │                  → vector search (cosine over 768-d embeddings)
-   │                  → LLM rerank top-5 with confidence
-   │
-   └── composeMatchReply() drafts the proposal, AgentMail sends it
-       in the same thread, saveMemories() persists role/budget/refs
-       so the next conversation starts smarter.
-```
+**4. Client replies** are routed by where their request actually is (`client-replies.ts`):
 
-### Why deferred matching?
+| Where the request is | Client says | What happens |
+|---|---|---|
+| still recruiting | anything | honest status update; new details are added to the brief |
+| shortlist sent | a name / "the second one" | confirmed → connecting; unconfirmed → asked to confirm, intro waits for their yes |
+| | "anyone else?" | a real rematch: fresh request, nobody already contacted |
+| | a question about someone | answered only from the profiles shown |
+| | a new project | pointed to a new email so the searches stay separate |
 
-Instant LLM replies feel robotic. The scheduler picks a uniformly-random time inside a configurable business window (default 9 AM – 4 PM, `crypto.randomInt`) and a worker drains the queue at that moment, so messages arrive on a human cadence. See `pickRandomMatchTime` in `src/lib/howdy/scheduler.ts`.
+**5. Intro and follow-up.** A few minutes after a pick, one email CCs both sides. Three days later each gets a "how was the call?" check-in; a bad call for the client ends in an offered rematch, a bad call for the freelancer goes to the team.
 
-### Memory
+**6. Guardrails on every inbound email** (`inbound-guard.ts`): bounces, auto-replies, the team's own mail, threads Howdy is only CC'd on, and unreadable (attachment-only) emails are never auto-answered — the team gets an alert instead. Freelancers, roster applicants and join requests are never treated as a hiring brief.
 
-`memories` table stores per-user facts (name, company, prior role hired, typical budget, style refs). Loaded on every turn and injected into both the brief-extraction and clarify prompts so Howdy never re-asks something it already knows.
+**7. Silent sign-ups** get one nudge 48 hours after the welcome email (only sign-ups from the last 14 days).
+
+### Safety switches
+
+- **`HOWDY_OUTREACH_DRYRUN`** (default on): every saga email — invites, shortlists, intros, check-ins, status replies, nudges — is logged, not sent, unless this is exactly `false`. Intake replies (clarifying questions, the "on it" ack, acknowledgements to freelancers writing in) always send.
+- **`HOWDY_DRYRUN_ALLOWLIST`**: while dry-run is on, emails whose recipients are all on this list really go out — run the full flow on your own addresses without touching real freelancers.
+- **Idempotency**: every step that sends email first claims its state change with a conditional update, so overlapping cron runs and webhook retries can't double-invite or double-send. Claims expire after 10 minutes, so a run killed mid-step is picked up by the next one. Duplicate webhook deliveries are skipped.
+- **Time limits**: model calls retry at most once, and the webhook alerts ops if handling passes 50s, instead of being killed silently at Vercel's 60s limit.
 
 ## Local setup
 
-1. Clone and install:
-   ```bash
-   git clone https://github.com/npmiaman/BCHowdy.git
-   cd BCHowdy
-   npm install
-   ```
-2. Copy env template and fill in the keys you have:
-   ```bash
-   cp .env.local.example .env.local
-   ```
+```bash
+npm ci
+cp .env.local.example .env.local   # fill in — every variable is documented there
+```
 
-| Var | Where to get it |
-|---|---|
-| `GOOGLE_API_KEY` | https://aistudio.google.com/apikey |
-| `AGENTMAIL_API_KEY` | https://console.agentmail.to |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project → Settings → API |
-| `SUPABASE_SERVICE_ROLE_KEY` | Same screen, the secret key |
-| `CRON_SECRET` | Any random string (`openssl rand -hex 32`) |
+Apply `supabase/migrations/0001` → `0006` in the Supabase SQL editor, in order, then seed the roster with `npm run seed:supabase`. Run the site with `npm run dev`.
 
-3. Apply the Supabase schema (one-time): paste `supabase/migrations/0001_init.sql` then `supabase/migrations/0002_leads.sql` into the Supabase SQL editor and run.
-4. Seed freelancers (one-time):
-   ```bash
-   npm run seed:supabase
-   ```
-5. Run the marketing site:
-   ```bash
-   npm run dev
-   ```
-6. (Optional) Test the agent end-to-end without deploying — the WebSocket listener subscribes to your AgentMail inbox and replies via the API:
-   ```bash
-   npm run howdy:listen
-   ```
-   Then email `howdyai@agentmail.to` from any address.
+## Tests
 
-## Available scripts
+```bash
+npm test
+```
+
+The suite drives the real route handlers (webhook, cron, signup, chat, applications) with Supabase, AgentMail and Gemini replaced by in-memory fakes (`tests/fakes/`), so the whole flow runs offline in about two seconds. `tests/e2e/saga.test.ts` walks full stories — brief → recruit → shortlist → intro → check-in → rematch — plus routing, the 24-hour fallback, concurrency, dry-run honesty and the guardrails.
+
+The fakes answer structured LLM calls with keyword heuristics (validated against the real schemas). They prove the plumbing and state machine, not the quality of Gemini's judgement.
+
+## Scripts
 
 | Command | What it does |
 |---|---|
-| `npm run dev` | Marketing site dev server |
-| `npm run build` | Production build |
-| `npm run howdy` | Interactive CLI to chat with the agent locally |
-| `npm run howdy:smoke` | One-shot agent dry run (sends a brief, prints the reply) |
-| `npm run howdy:multi` | Multi-turn dry run (vague → schedule → match) |
-| `npm run howdy:distribution` | Histogram of 200 random match times to verify uniformity |
-| `npm run howdy:listen` | WebSocket listener: sends agent replies for real inbound mail |
-| `npm run seed:supabase` | Embed + push the 20 freelancer seeds |
+| `npm run dev` / `build` / `start` | Next.js |
+| `npm test` / `npm run test:watch` | Vitest |
+| `npm run seed:supabase` | Embed + push the seeded freelancers |
+| `npm run import:freelancers` | Import freelancers from a CSV |
+| `npm run applications -- list \| approve <id> \| reject <id>` | Review roster applications |
+| `npm run backup:db` / `mirror:backfill` | Local DB backup / backfill the mirror DB |
+| `npm run howdy` / `howdy:smoke` / `howdy:multi` | Talk to the agent locally |
+| `npm run howdy:reply-check` | Live check of the reply classifier against real Gemini |
 | `npm run agentmail:inboxes` | List inboxes the API key can see |
 
-## Production deploy
+## Going live
 
-1. **Vercel** — import the repo, add every env var from `.env.local` to the project's Environment Variables, deploy.
-2. **AgentMail webhook** — in the AgentMail console, set the inbox webhook URL to `https://<your-vercel-url>/api/agentmail/webhook` and subscribe to `message.received`.
-3. **Cron** — Vercel Hobby caps cron at once-daily, so the every-minute drain runs from a free GitHub Actions workflow (`.github/workflows/howdy-cron.yml`). Set two repo secrets at GitHub → Settings → Secrets and variables → Actions:
-   - `HOWDY_DEPLOYMENT_URL` — the Vercel URL (no trailing slash)
-   - `CRON_SECRET` — same value as on Vercel
+In this order:
+
+1. **Run migration `0006`** in Supabase. The cron refuses to run without it.
+2. **Fix the model setup.** On 2026-09-29 `gemini-flash-latest` resolved to `gemini-3.8-flash`, which took 17–55s per call, returned 503s under load, and the key hit its quota (429). A client turn makes 2–3 calls inside a 60s function. Pin `GEMINI_CHAT_MODEL` to a faster model (try a `flash-lite`, or set `GEMINI_THINKING_LEVEL=LOW`), check billing/quota, then run `npm run howdy:reply-check`.
+3. **Set env vars on Vercel** (see `.env.local.example`), including `AGENTMAIL_WEBHOOK_SECRET` — the webhook's `whsec_…` signing secret from AgentMail (`webhooks.get(<id>).secret`). In production the webhook rejects every request until it's set.
+4. **Deploy** (merge to `main`).
+5. **Scheduler**: something must call `GET /api/howdy/process-pending` with `Authorization: Bearer $CRON_SECRET` every ~15 minutes. The GitHub Actions workflow does this, but GitHub disables scheduled workflows after 60 days without commits — an external scheduler (e.g. cron-job.org) or Vercel Pro cron is more durable. Use one scheduler.
+6. **Enable the AgentMail webhook** (`message.received` → `https://<domain>/api/agentmail/webhook`).
+7. **Test in dry-run** with your own addresses on `HOWDY_DRYRUN_ALLOWLIST`, then set `HOWDY_OUTREACH_DRYRUN=false`.
 
 ## Tweaking behavior
 
-- **Match-window hours** — `HOWDY_BUSINESS_HOURS_START` / `HOWDY_BUSINESS_HOURS_END` (defaults 9 / 16).
-- **Brief actionability bar** — `briefIsActionable` in `src/lib/howdy/extractor.ts` controls how many fields are required before the agent stops asking and schedules a match.
-- **Clarify priority order** — `CLARIFY_SYSTEM_PROMPT` in `src/lib/howdy/agent.ts` lists which missing field to ask about next.
-- **Welcome email copy** — `welcomeBody()` in `src/app/api/lead/route.ts`.
-
-## Acknowledgements
-
-Built with help from Claude. The pixel-art Howdy mascot was drawn by hand (or someone's AI version of a hand) and lives at `public/howdy-logo.png`.
+- Required brief fields — `REQUIRED_FIELDS` in `src/lib/howdy/types.ts`; clarifying-turn cap — `MAX_CLARIFY_TURNS` in `assessor.ts`.
+- Saga timing — `REPLY_TIMEOUT_HOURS`, `FALLBACK_DELIVERY_HOURS`, `MAX_DEFER_HOURS`, `CHECKIN_DELAY_DAYS` in `types.ts`.
+- Nudges — `NUDGE_AFTER_HOURS`, `NUDGE_MAX_AGE_DAYS` in `nudges.ts`.
+- Decisions and their reasons — `DECISIONS.md`.

@@ -6,18 +6,21 @@ that actually exist in BCHowdy today.
 
 ## Why this directory exists
 
-The branch `FDR` was opened to "make the model" from the paper. Per
-[`ML_AGENTS.md`](../../ML_AGENTS.md) §4, no model code is written before the
-framing in this directory is complete and acknowledged by the project owner.
+The branch `FDR` was opened to "make the model" from the paper. No model code
+is written before the framing in this directory is complete and acknowledged by
+the project owner.
 
 ## Files
 
-| File | What it answers | ML_AGENTS.md ref |
-|---|---|---|
-| `PROBLEM.md` | What are we predicting, from what, when, why, and with what success criteria | §3, §4, §8.5, §10.1 |
-| `DATA.md` | What data exists today, what the paper requires, the gap, and the data-acquisition plan | §5 (whole section) |
-| `FALSIFICATION.md` | Conditions under which the entire FDR program is killed, not patched | §1.10, §12 (paper), §12.5 (paper) |
-| `DECISIONS.md` | Every non-trivial choice in this session, dated and justified | §1.9, §23.3 |
+None of the four framing docs below has been written yet — only this README
+exists. They're the plan, not the contents.
+
+| File | What it answers |
+|---|---|
+| `PROBLEM.md` | What are we predicting, from what, when, why, and with what success criteria |
+| `DATA.md` | What data exists today, what the paper requires, the gap, and the data-acquisition plan |
+| `FALSIFICATION.md` | Conditions under which the entire FDR program is killed, not patched |
+| `DECISIONS.md` | Every non-trivial choice in this session, dated and justified |
 
 ## Status (2026-05-11)
 

@@ -89,10 +89,18 @@ async function shortlistViaSupabase(
   });
   if (error) throw error;
   if (!data) return [];
-  return (data as Array<Freelancer & { similarity: number }>).map((row) => {
-    const { similarity, ...freelancer } = row;
-    return { freelancer, score: similarity };
-  });
+  return (data as Array<Freelancer & { similarity: number | null }>).map(
+    (row) => {
+      const { similarity, ...freelancer } = row;
+      // A null similarity means the row had no embedding to compare against.
+      // Coerce to 0 so ranking degrades gracefully instead of crashing on
+      // `.toFixed` — the self-healing backfill fills real values shortly after.
+      return {
+        freelancer,
+        score: typeof similarity === "number" ? similarity : 0,
+      };
+    },
+  );
 }
 
 async function shortlistViaJson(

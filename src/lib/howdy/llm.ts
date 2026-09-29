@@ -9,10 +9,20 @@ export function getChatModel(): ChatGoogleGenerativeAI {
       "GOOGLE_API_KEY is not set. Add it to .env.local before running the agent.",
     );
   }
+  const thinkingLevel = process.env.GEMINI_THINKING_LEVEL as
+    | "LOW"
+    | "MEDIUM"
+    | "HIGH"
+    | undefined;
   chatClient = new ChatGoogleGenerativeAI({
     model: process.env.GEMINI_CHAT_MODEL ?? "gemini-flash-latest",
     temperature: 0.2,
     apiKey: process.env.GOOGLE_API_KEY,
+    // LangChain's default is 6 retries with exponential backoff — minutes of
+    // silent waiting on a 503/429, far past Vercel's 60s limit. Fail fast so
+    // the caller's error path (ops alert, claim release) actually runs.
+    maxRetries: Number(process.env.GEMINI_MAX_RETRIES ?? 1),
+    ...(thinkingLevel ? { thinkingConfig: { thinkingLevel } } : {}),
   });
   return chatClient;
 }

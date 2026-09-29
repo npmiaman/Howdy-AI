@@ -191,7 +191,7 @@ function decideRoute(
   // Once a match has been delivered on this thread, every subsequent reply
   // is a follow-up — never re-trigger the matcher.
   if (state.hasPreviousMatch) return "followUp";
-  // Match only once EVERY field is clear (or explicitly not-applicable);
+  // Match once the required core of the brief is clear (see REQUIRED_FIELDS);
   // otherwise keep clarifying.
   return state.assessment?.allResolved ? "schedule" : "clarify";
 }

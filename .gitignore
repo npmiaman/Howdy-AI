@@ -46,3 +46,8 @@ howdy-*.png
 
 # Local DB backups (contain PII — never commit)
 /backups/
+
+# Roster CSVs contain freelancer PII (emails, phones) — never commit
+supabase/migrations/*.csv
+.claude/worktrees/
+!.env.local.example

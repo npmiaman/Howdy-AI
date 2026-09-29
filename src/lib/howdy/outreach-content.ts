@@ -103,6 +103,9 @@ export async function clientShortlistEmail(args: {
   brief: Brief;
   picks: Array<{ freelancer: Freelancer; rationale: string | null }>;
   fewerThanTarget: boolean;
+  // provisional = these are the best DB matches but we have NOT yet confirmed
+  // their availability (the 24h fallback path). Copy must not claim otherwise.
+  provisional?: boolean;
 }): Promise<string> {
   const notes = await Promise.all(
     args.picks.map(async (p, i) => {
@@ -115,9 +118,16 @@ export async function clientShortlistEmail(args: {
     }),
   );
 
-  const intro = args.fewerThanTarget
-    ? `Good news — I've lined up ${args.picks.length} creative${args.picks.length === 1 ? "" : "s"} who are confirmed available and keen. I'm still scouting for more, but didn't want to hold these up:`
-    : `Good news — I've lined up 3 creatives who are confirmed available and genuinely keen on your project:`;
+  const count = args.picks.length;
+  let intro: string;
+  if (args.provisional) {
+    // Honest: strong matches, availability not yet confirmed.
+    intro = `Here ${count === 1 ? "is" : "are"} the ${count === 1 ? "strongest match" : `top ${count} matches`} from our network for your brief. I'm confirming their availability now, but wanted to get ${count === 1 ? "them" : "these"} in front of you rather than keep you waiting:`;
+  } else if (args.fewerThanTarget) {
+    intro = `Good news — I've lined up ${count} creative${count === 1 ? "" : "s"} who ${count === 1 ? "is" : "are"} confirmed available and keen. I'm still scouting for more, but didn't want to hold these up:`;
+  } else {
+    intro = `Good news — I've lined up 3 creatives who are confirmed available and genuinely keen on your project:`;
+  }
 
   const outro = `Reply with the name(s) you'd like to connect with — one or more is totally fine — and I'll make the intro.`;
 
@@ -164,4 +174,44 @@ Why they fit: ${args.rationale ?? args.freelancer.portfolio_summary}
 
 Write the intro email.`,
   );
+}
+
+// ------------------------------------------------ transactional templates
+// Fixed copy (no LLM) for messages whose wording carries a promise — each one
+// describes exactly what the code does next.
+
+/** Client picked a freelancer who hasn't confirmed yet: ask for their yes. */
+export function chosenNudge(freelancer: Freelancer): string {
+  const first = freelancer.name.split(" ")[0];
+  return `Hey ${first} — good news: the client would love to work with you on this one. Still up for it? A quick yes and I'll make the intro.`;
+}
+
+/** A chosen freelancer turned it down after the client picked them. */
+export function chosenUnavailableNotice(freelancer: Freelancer): string {
+  const first = freelancer.name.split(" ")[0];
+  return `Quick update — ${first} can't take this one on after all. Reply with another name from the shortlist, or say "anyone else" and I'll line up fresh people.`;
+}
+
+/** The client's acknowledgement after they pick from the shortlist. */
+export function selectionAck(args: {
+  confirmed: string[];
+  pending: string[];
+}): string {
+  const names = (xs: string[]) =>
+    xs.length <= 1 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
+  const parts: string[] = [];
+  if (args.confirmed.length)
+    parts.push(
+      `Perfect — connecting you with ${names(args.confirmed)} now. The intro will land in your inbox shortly.`,
+    );
+  if (args.pending.length)
+    parts.push(
+      `I'm checking ${names(args.pending)}'s availability now and will intro you as soon as they confirm.`,
+    );
+  return parts.join(" ");
+}
+
+/** No one in the network fits (or everyone who does has been tried). */
+export function noMatchNotice(role: string | null): string {
+  return `I've been through everyone in my network who fits this ${role ?? "brief"} and don't have a strong match right now. If you can loosen one thing — budget, timeline, or style — reply with it and I'll search again.`;
 }

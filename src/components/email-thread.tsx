@@ -6,6 +6,7 @@ import {
   Archive,
   ArrowLeft,
   CheckCheck,
+  ExternalLink,
   Forward,
   Mail,
   Mic,
@@ -24,8 +25,11 @@ import {
 export type Attachment = {
   name: string;
   size: string;
-  kind: "pdf" | "image" | "audio" | "figma";
+  kind: "pdf" | "image" | "audio" | "figma" | "gdrive" | "gdoc";
 };
+
+// An optional click-to-open link button (WhatsApp CTA / Gmail button).
+export type Cta = { label: string; href: string };
 
 export type EmailMessage = {
   from: string;
@@ -37,6 +41,7 @@ export type EmailMessage = {
   body: React.ReactNode;
   snippet: string;
   attachments?: Attachment[];
+  cta?: Cta;
   avatarSrc?: string;
   avatarBlend?: boolean;
 };
@@ -57,18 +62,12 @@ export function EmailThread({
   const expanded = visible[visible.length - 1];
   const isLastStep = safeStep === messages.length - 1;
 
-  // Map email progress onto the WhatsApp thread so the scroll-step
-  // animation drives both tabs (e.g. 4 email steps -> 6 chat bubbles).
-  const waVisible = Math.max(
-    1,
-    Math.ceil(((safeStep + 1) / messages.length) * WA_MESSAGES.length),
-  );
-
   if (tab === "whatsapp") {
     return (
       <div className="mx-auto w-full max-w-2xl overflow-hidden rounded-xl bg-white font-[system-ui,sans-serif] text-[#202124] shadow-2xl ring-1 ring-black/10">
         <BrowserChrome active="whatsapp" onSelect={setTab} />
-        <WhatsAppPanel visibleCount={waVisible} />
+        {/* Same conversation as the Gmail tab, rendered as a chat. */}
+        <WhatsAppPanel messages={visible} />
       </div>
     );
   }
@@ -327,6 +326,18 @@ function ExpandedEmail({ message }: { message: EmailMessage }) {
           {message.attachments && message.attachments.length > 0 && (
             <Attachments attachments={message.attachments} />
           )}
+
+          {message.cta && (
+            <a
+              href={message.cta.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-[#1a73e8] px-4 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-[#1765cc]"
+            >
+              <ExternalLink className="size-3.5" strokeWidth={2.25} />
+              {message.cta.label}
+            </a>
+          )}
         </div>
       </div>
     </div>
@@ -359,13 +370,16 @@ function AttachmentCard({ file }: { file: Attachment }) {
         <div className="truncate text-[13px] font-medium leading-tight text-neutral-800">
           {file.name}
         </div>
-        <div className="mt-0.5 text-[11px] text-neutral-500">{file.size}</div>
+        <div className="mt-0.5 text-[11px] text-neutral-500">
+          {cloudLabel(file.kind) ?? file.size}
+        </div>
       </div>
     </div>
   );
 }
 
 function FileIcon({ kind }: { kind: Attachment["kind"] }) {
+  if (cloudLabel(kind)) return <CloudIcon kind={kind} />;
   const meta = attachmentStyles[kind];
   return (
     <div className="relative shrink-0">
@@ -392,52 +406,88 @@ const attachmentStyles: Record<
   image: { bg: "bg-[#0F9D58]", label: "PNG" },
   audio: { bg: "bg-[#4285F4]", label: "MP3" },
   figma: { bg: "bg-[#A142F4]", label: "FIG" },
+  gdrive: { bg: "bg-[#1FA463]", label: "DRIVE" },
+  gdoc: { bg: "bg-[#4285F4]", label: "DOC" },
 };
+
+// Cloud-file kinds render their own brand logo + a "Google …" label.
+function cloudLabel(kind: Attachment["kind"]): string | null {
+  if (kind === "gdrive") return "Google Drive";
+  if (kind === "gdoc") return "Google Docs";
+  return null;
+}
+
+// The Google Drive tri-color triangle logo.
+function DriveIcon({ className = "h-7 w-8" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 87.3 78" className={`shrink-0 ${className}`} aria-hidden>
+      <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da" />
+      <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47" />
+      <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335" />
+      <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d" />
+      <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc" />
+      <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.151 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00" />
+    </svg>
+  );
+}
+
+// The Google Docs blue document logo.
+function DocsIcon({ className = "h-8 w-6" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 47 64" className={`shrink-0 ${className}`} aria-hidden>
+      <path
+        d="M29.5 0H6C2.7 0 0 2.7 0 6v52c0 3.3 2.7 6 6 6h35c3.3 0 6-2.7 6-6V17.5z"
+        fill="#4285F4"
+      />
+      <path d="M29.5 0v12c0 3 2.5 5.5 5.5 5.5H47z" fill="#A1C2FA" />
+      <g fill="#fff">
+        <rect x="11" y="29" width="25" height="3" rx="1.5" />
+        <rect x="11" y="37" width="25" height="3" rx="1.5" />
+        <rect x="11" y="45" width="16" height="3" rx="1.5" />
+      </g>
+    </svg>
+  );
+}
+
+function CloudIcon({ kind }: { kind: Attachment["kind"] }) {
+  if (kind === "gdrive") return <DriveIcon className="h-7 w-8" />;
+  return <DocsIcon className="h-8 w-6" />;
+}
 
 /* ---------------------------------------------------------------------------
- * WhatsApp tab — same scenario energy as the email thread, different brief.
+ * WhatsApp tab — the SAME conversation as the Gmail thread, rendered as a chat.
  * ------------------------------------------------------------------------- */
 
-type WaMessage = {
+type WaItem = {
   direction: "incoming" | "outgoing";
-  text: React.ReactNode;
   time: string;
+  text?: React.ReactNode;
+  attachment?: Attachment;
+  cta?: Cta;
 };
 
-const WA_MESSAGES: WaMessage[] = [
-  {
-    direction: "outgoing",
-    text: "Howdy! Need a video editor for our fashion drop film. 45s, 10 days 🎬",
-    time: "11:02",
-  },
-  {
-    direction: "incoming",
-    text: "On it 🤝 Reference + budget?",
-    time: "11:04",
-  },
-  {
-    direction: "outgoing",
-    text: "A24-teaser vibe. ~$1.5k.",
-    time: "11:07",
-  },
-  {
-    direction: "incoming",
-    text: (
-      <>
-        Match: <strong>Leo Tan</strong> — 7 yrs, music-led cuts. $40/hr,
-        free Thursday. Reel: leotan.work
-      </>
-    ),
-    time: "11:31",
-  },
-];
+// Flatten the email thread into chat items: a text bubble per message plus one
+// bubble per attachment — so both tabs show the exact same conversation.
+function toWaItems(messages: EmailMessage[]): WaItem[] {
+  const items: WaItem[] = [];
+  for (const m of messages) {
+    if (m.snippet) {
+      items.push({
+        direction: m.direction,
+        time: m.time,
+        text: m.snippet,
+        cta: m.cta,
+      });
+    }
+    for (const a of m.attachments ?? []) {
+      items.push({ direction: m.direction, time: m.time, attachment: a });
+    }
+  }
+  return items;
+}
 
-// Faint doodle pattern for the chat backdrop.
-const WA_PATTERN =
-  `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cg fill='none' stroke='%23000' stroke-opacity='0.045' stroke-width='1.2'%3E%3Ccircle cx='18' cy='22' r='5'/%3E%3Cpath d='M86 14l8 8m0-8l-8 8'/%3E%3Ccircle cx='62' cy='58' r='3'/%3E%3Cpath d='M22 84c4-6 12-6 16 0'/%3E%3Cpath d='M96 92l6 6m0-6l-6 6'/%3E%3Ccircle cx='44' cy='108' r='4'/%3E%3C/g%3E%3C/svg%3E")`;
-
-function WhatsAppPanel({ visibleCount }: { visibleCount: number }) {
-  const visible = WA_MESSAGES.slice(0, visibleCount);
+function WhatsAppPanel({ messages }: { messages: EmailMessage[] }) {
+  const items = toWaItems(messages);
   return (
     <div className="flex flex-col">
       {/* Chat header */}
@@ -470,21 +520,18 @@ function WhatsAppPanel({ visibleCount }: { visibleCount: number }) {
       </div>
 
       {/* Messages */}
-      <div
-        className="space-y-1 bg-[#efeae2] px-4 pb-4 pt-3 md:space-y-1.5 md:px-9 md:pb-5 md:pt-4"
-        style={{ backgroundImage: WA_PATTERN }}
-      >
+      <div className="space-y-1 bg-[#efeae2] px-4 pb-4 pt-3 md:space-y-1.5 md:px-9 md:pb-5 md:pt-4">
         <div className="flex justify-center pb-2">
           <span className="rounded-lg bg-white px-2.5 py-1 text-[9px] font-medium uppercase tracking-wide text-[#54656f] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] md:text-[10px]">
             Today
           </span>
         </div>
-        {visible.map((m, i) => (
+        {items.map((it, i) => (
           <WaBubble
             key={i}
-            message={m}
-            isLatest={i === visible.length - 1}
-            showTail={i === 0 || WA_MESSAGES[i - 1].direction !== m.direction}
+            item={it}
+            isLatest={i === items.length - 1}
+            showTail={i === 0 || items[i - 1].direction !== it.direction}
           />
         ))}
       </div>
@@ -505,15 +552,16 @@ function WhatsAppPanel({ visibleCount }: { visibleCount: number }) {
 }
 
 function WaBubble({
-  message,
+  item,
   isLatest,
   showTail,
 }: {
-  message: WaMessage;
+  item: WaItem;
   isLatest: boolean;
   showTail: boolean;
 }) {
-  const isOut = message.direction === "outgoing";
+  const isOut = item.direction === "outgoing";
+  const att = item.attachment;
   return (
     <div
       className={`flex ${isOut ? "justify-end" : "justify-start"} ${
@@ -525,31 +573,109 @@ function WaBubble({
       }`}
     >
       <div
-        className={`relative max-w-[80%] rounded-lg px-2.5 pb-1 pt-1.5 text-[11px] leading-[1.35] text-[#111b21] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] md:max-w-[68%] md:px-3 md:pb-1.5 md:pt-2 md:text-[13px] ${
-          isOut ? "bg-[#d9fdd3]" : "bg-white"
-        } ${showTail ? (isOut ? "rounded-tr-none" : "rounded-tl-none") : ""}`}
+        className={`relative max-w-[80%] rounded-lg bg-white p-1 text-[11px] leading-[1.35] text-[#111b21] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] md:max-w-[68%] md:text-[13px] ${
+          showTail ? (isOut ? "rounded-tr-none" : "rounded-tl-none") : ""
+        }`}
       >
         {/* bubble tail */}
         {showTail && (
           <svg
             viewBox="0 0 8 13"
-            className={`absolute top-0 h-[13px] w-2 ${
-              isOut
-                ? "-right-2 text-[#d9fdd3]"
-                : "-left-2 scale-x-[-1] text-white"
+            className={`absolute top-0 h-[13px] w-2 text-white ${
+              isOut ? "-right-2" : "-left-2 scale-x-[-1]"
             }`}
             aria-hidden
           >
             <path d="M0 0 L8 0 L0 10 Z" fill="currentColor" />
           </svg>
         )}
-        {message.text}
-        <span className="float-right ml-2 mt-2 flex translate-y-0.5 items-center gap-1 text-[8px] leading-none text-[#667781] md:text-[10px]">
-          {message.time}
+
+        {att &&
+          (att.kind === "image" ? (
+            <WaImage name={att.name} />
+          ) : (
+            <WaDocCard file={att} />
+          ))}
+
+        {item.text && <div className="px-1.5 pt-1">{item.text}</div>}
+
+        <div className="flex items-center justify-end gap-1 px-1.5 pb-0.5 pt-0.5 text-[8px] leading-none text-[#667781] md:text-[10px]">
+          {item.time}
           {isOut && (
             <CheckCheck className="size-3 text-[#53bdeb] md:size-3.5" strokeWidth={2} />
           )}
-        </span>
+        </div>
+
+        {item.cta && (
+          <a
+            href={item.cta.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-0.5 flex items-center justify-center gap-1.5 rounded-b-lg border-t border-black/[0.07] px-2 py-2 text-[12px] font-medium text-[#027eb5] transition-colors hover:bg-black/[0.03] md:text-[13px]"
+          >
+            <ExternalLink className="size-3.5" strokeWidth={2} />
+            {item.cta.label}
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// WhatsApp document share — a tappable file row inside the bubble.
+function WaDocCard({ file }: { file: Attachment }) {
+  const meta = attachmentStyles[file.kind];
+  const cloud = cloudLabel(file.kind);
+  return (
+    <div className="flex items-center gap-2.5 rounded-md bg-black/[0.06] px-2.5 py-2">
+      {cloud ? (
+        <CloudIcon kind={file.kind} />
+      ) : (
+        <div className="relative shrink-0">
+          <div
+            className={`flex h-9 w-7 flex-col items-center justify-end rounded-[3px] pb-0.5 ${meta.bg}`}
+          >
+            <span className="text-[7px] font-bold tracking-wide text-white">
+              {meta.label}
+            </span>
+          </div>
+          <div
+            className="absolute right-0 top-0 size-2 bg-white"
+            style={{ clipPath: "polygon(0 0, 100% 100%, 100% 0)" }}
+          />
+        </div>
+      )}
+      <div className="min-w-0">
+        <div className="truncate text-[11px] font-medium text-[#111b21] md:text-[12.5px]">
+          {file.name}
+        </div>
+        <div className="mt-0.5 text-[9px] text-[#667781] md:text-[10px]">
+          {cloud ?? `${file.size} · ${meta.label}`}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// WhatsApp image share — a small collage standing in for a shared photo.
+function WaImage({ name }: { name: string }) {
+  const tiles = [
+    "from-indigo-500 to-purple-600",
+    "from-zinc-700 to-zinc-950",
+    "from-sky-400 to-blue-600",
+    "from-rose-400 to-pink-600",
+    "from-emerald-400 to-teal-600",
+    "from-amber-300 to-orange-500",
+  ];
+  return (
+    <div>
+      <div className="grid w-[176px] grid-cols-3 gap-[2px] overflow-hidden rounded-md md:w-[210px]">
+        {tiles.map((t, i) => (
+          <div key={i} className={`aspect-square bg-gradient-to-br ${t}`} />
+        ))}
+      </div>
+      <div className="mt-1 truncate px-1.5 text-[9px] text-[#667781] md:text-[10px]">
+        {name}
       </div>
     </div>
   );
