@@ -13,7 +13,6 @@
     "howdy:reply-check": "tsx scripts/reply-intent-check.ts",
     "eval:matching": "tsx scripts/eval-matching.ts",
     "howdy:distribution": "tsx scripts/scheduler-distribution.ts",
-    "seed:supabase": "tsx scripts/seed-supabase.ts",
     "import:freelancers": "tsx scripts/import-freelancers-csv.ts",
     "applications": "tsx scripts/freelancer-applications.ts",
     "billing": "tsx scripts/billing.ts",
