@@ -12,20 +12,29 @@ type ChatMessage = {
 type View = "card" | "minimized" | "open";
 
 const FONT_CLASS = "font-[family-name:var(--font-inter)]";
+const CONTACT_INPUT_CLASS =
+  "h-9 w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-50 placeholder:text-zinc-500 focus:border-zinc-600 focus:outline-none disabled:opacity-60";
+
+const SESSION_KEY = "howdy_chat_session";
 
 // Stable per-visitor id so every chat turn is cached onto one thread.
 function getSessionId(): string {
   if (typeof window === "undefined") return "ssr";
-  const KEY = "howdy_chat_session";
-  let id = window.localStorage.getItem(KEY);
+  let id = window.localStorage.getItem(SESSION_KEY);
   if (!id) {
     id =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
         : `s_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    window.localStorage.setItem(KEY, id);
+    window.localStorage.setItem(SESSION_KEY, id);
   }
   return id;
+}
+
+// A session ends once its brief is handed off to email (the server allows one
+// handoff per session), so the visitor's next conversation starts fresh.
+function endSession() {
+  window.localStorage.removeItem(SESSION_KEY);
 }
 
 const OPENING: ChatMessage = {
@@ -41,13 +50,27 @@ export function HowdyChatWidget() {
   const [pending, setPending] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Brief is ready: Howdy asked where to send the shortlist.
+  const [needsContact, setNeedsContact] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [contactPending, setContactPending] = useState(false);
+  const [contactError, setContactError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  const showContactForm = needsContact && !done;
+  const locked = pending || contactPending || done;
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, pending, view]);
+  }, [messages, pending, view, showContactForm, contactError]);
+
+  useEffect(() => {
+    if (showContactForm) nameRef.current?.focus();
+  }, [showContactForm]);
 
   useEffect(() => {
     if (view === "open") inputRef.current?.focus();
@@ -63,7 +86,7 @@ export function HowdyChatWidget() {
 
   async function send() {
     const trimmed = input.trim();
-    if (!trimmed || pending || done) return;
+    if (!trimmed || locked) return;
     const next: ChatMessage[] = [
       ...messages,
       { role: "user", content: trimmed },
@@ -87,13 +110,57 @@ export function HowdyChatWidget() {
         };
         throw new Error(data.error ?? "Howdy is unreachable.");
       }
-      const data = (await res.json()) as { reply: string; done?: boolean };
+      const data = (await res.json()) as {
+        reply: string;
+        done?: boolean;
+        needsContact?: boolean;
+      };
       setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
+      setNeedsContact(!!data.needsContact);
       if (data.done) setDone(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
       setPending(false);
+    }
+  }
+
+  async function submitContact(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (contactPending || done) return;
+    setContactPending(true);
+    setContactError(null);
+    try {
+      const res = await fetch("/api/howdy/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: messages.map(({ role, content }) => ({ role, content })),
+          sessionId: getSessionId(),
+          contact: { name, email },
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        reply?: string;
+        done?: boolean;
+        error?: string;
+      };
+      const reply = data.reply;
+      if (!res.ok || !reply) {
+        throw new Error(data.error ?? "Couldn't send that — mind trying again?");
+      }
+      setMessages((m) => [...m, { role: "assistant", content: reply }]);
+      if (data.done) {
+        setDone(true);
+        setNeedsContact(false);
+        endSession();
+      }
+    } catch (err) {
+      setContactError(
+        err instanceof Error ? err.message : "Something went wrong.",
+      );
+    } finally {
+      setContactPending(false);
     }
   }
 
@@ -129,14 +196,14 @@ export function HowdyChatWidget() {
             </button>
           </div>
           <h3 className="mt-2.5 text-balance text-[13px] font-semibold leading-snug tracking-tight text-zinc-950">
-            Talk to Howdy and get a feel for how it works.
+            Tell Howdy who you need. Your shortlist lands within 24 hours.
           </h3>
           <button
             type="button"
             onClick={() => setView("open")}
             className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-lg bg-zinc-950 px-4 text-[13px] font-medium text-white transition-colors hover:bg-zinc-800"
           >
-            Try now
+            Start chatting
           </button>
           <p className="mt-1.5 text-center text-[11px] text-zinc-600">
             No signup needed
@@ -220,17 +287,50 @@ export function HowdyChatWidget() {
                 {error}
               </div>
             )}
-            {done && !pending && (
-              <div className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-400">
-                That&apos;s the demo. To use the real thing, email{" "}
-                <a
-                  href="mailto:howdyai@agentmail.to"
-                  className="text-zinc-100 underline-offset-4 hover:underline"
+            {showContactForm && (
+              <form
+                onSubmit={(e) => void submitContact(e)}
+                noValidate
+                className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-900 p-3"
+              >
+                <div className="text-xs text-zinc-400">
+                  Where should I send your shortlist?
+                </div>
+                <input
+                  ref={nameRef}
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={contactPending}
+                  autoComplete="name"
+                  aria-label="Your name"
+                  placeholder="Your name"
+                  className={CONTACT_INPUT_CLASS}
+                />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={contactPending}
+                  autoComplete="email"
+                  inputMode="email"
+                  aria-label="Your email"
+                  placeholder="you@company.com"
+                  className={CONTACT_INPUT_CLASS}
+                />
+                {contactError && (
+                  <div className="rounded-md border border-red-900/50 bg-red-950/40 px-3 py-2 text-xs text-red-300">
+                    {contactError}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={contactPending || !name.trim() || !email.trim()}
+                  className="inline-flex h-9 w-full items-center justify-center rounded-md bg-zinc-50 px-4 text-[13px] font-medium text-zinc-900 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
                 >
-                  howdyai@agentmail.to
-                </a>
-                .
-              </div>
+                  {contactPending ? "Sending…" : "Send my shortlist here"}
+                </button>
+              </form>
             )}
           </div>
 
@@ -243,20 +343,22 @@ export function HowdyChatWidget() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
                 rows={1}
-                disabled={pending || done}
+                disabled={locked}
                 placeholder={
                   done
-                    ? "Demo ended"
+                    ? "Brief sent — check your inbox"
                     : pending
                       ? "Howdy is thinking…"
-                      : "Tell Howdy what you need…"
+                      : showContactForm
+                        ? "Anything else to add?"
+                        : "Tell Howdy what you need…"
                 }
                 className="max-h-32 flex-1 resize-none bg-transparent text-sm text-zinc-50 placeholder:text-zinc-500 focus:outline-none disabled:opacity-60"
               />
               <button
                 type="button"
                 onClick={() => void send()}
-                disabled={pending || done || !input.trim()}
+                disabled={locked || !input.trim()}
                 aria-label="Send"
                 className="flex size-8 shrink-0 items-center justify-center rounded-md bg-zinc-50 text-zinc-900 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
               >
