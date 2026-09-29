@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
+import { sameEmail } from "@/lib/utils";
 
 import { getEmbeddingModel } from "./llm";
 import type { Freelancer } from "./types";
@@ -36,6 +37,27 @@ export async function getFreelancersByIds(
   return ids
     .map((id) => byId.get(id))
     .filter((f): f is Freelancer => f !== undefined);
+}
+
+/** Freelancers by id, keyed for lookup. */
+export async function getFreelancerMap(
+  ids: string[],
+): Promise<Map<string, Freelancer>> {
+  const list = await getFreelancersByIds([...new Set(ids)]);
+  return new Map(list.map((f) => [f.id, f]));
+}
+
+/** Roster ids for an email address (exact, case-insensitive). */
+export async function findFreelancerIdsByEmail(email: string): Promise<string[]> {
+  if (!isSupabaseConfigured() || !email) return [];
+  const { data, error } = await getSupabaseAdmin()
+    .from("freelancers")
+    .select("id,email")
+    .ilike("email", email);
+  if (error) return [];
+  return (data ?? [])
+    .filter((f: { email: string }) => sameEmail(f.email, email))
+    .map((f: { id: string }) => f.id);
 }
 
 export function freelancerToEmbeddingText(f: Freelancer): string {
