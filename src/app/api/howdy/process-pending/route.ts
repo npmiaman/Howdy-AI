@@ -25,9 +25,27 @@ import {
   releasePending,
 } from "@/lib/howdy/scheduler";
 import type { PendingMatch } from "@/lib/howdy/scheduler";
+import { getSupabaseAdmin } from "@/lib/supabase/client";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+/**
+ * The saga records which candidates the client was shown (migration 0006).
+ * Without that column every shortlist step would claim a request, fail, and
+ * release it again on every run — so stop loudly instead.
+ */
+async function schemaProblem(): Promise<string | null> {
+  try {
+    const { error } = await getSupabaseAdmin()
+      .from("match_candidates")
+      .select("shown_to_client_at")
+      .limit(1);
+    return error ? error.message : null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+}
 
 function authorize(request: Request): NextResponse | null {
   const expected = process.env.CRON_SECRET;
@@ -52,6 +70,18 @@ export async function GET(request: Request) {
     return NextResponse.json(
       { ok: false, error: "Gemini key missing" },
       { status: 503 },
+    );
+  }
+
+  const problem = await schemaProblem();
+  if (problem) {
+    console.error("[process-pending] schema check failed:", problem);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `schema check failed — is supabase/migrations/0006 applied? (${problem})`,
+      },
+      { status: 500 },
     );
   }
 

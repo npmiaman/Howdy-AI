@@ -154,4 +154,16 @@ describe("saga edges", () => {
     expect(res.body.action).toBe("freelancer_applicant");
     expect(fakeLLM.callsTo("brief")).toHaveLength(0);
   });
+
+  it("the cron stops loudly, touching nothing, if migration 0006 isn't applied", async () => {
+    roster(3);
+    await scheduled();
+    advance(3 * HOUR + MIN);
+    fakeDb.failNext("match_candidates", "select");
+    const res = await runCron();
+    expect(res.status).toBe(500);
+    expect(String(res.body.error)).toMatch(/0006/);
+    expect(table("pending_matches")[0].processed_at).toBeNull();
+  });
 });
+
