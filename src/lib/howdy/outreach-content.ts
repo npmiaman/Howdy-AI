@@ -14,7 +14,7 @@ import { type Brief, type Freelancer, PROMISE_HOURS } from "./types";
 
 
 /** What a freelancer is allowed to see before they accept — NO client identity. */
-function anonymizedBrief(brief: Brief): string {
+export function anonymizedBrief(brief: Brief): string {
   const lines: string[] = [];
   if (brief.role) lines.push(`Role: ${brief.role}`);
   if (brief.description)
@@ -145,6 +145,20 @@ Why they fit: ${args.rationale ?? args.freelancer.portfolio_summary}
 
 Write the intro email.`,
   );
+}
+
+const FREELANCER_QA_SYSTEM = `You are Howdy, answering a freelancer's question about a gig you just offered them. Use ONLY the anonymised brief below. Never reveal or guess the client's name, company or identity. If the brief doesn't answer the question, say so plainly and that you'll share the full details once they're in. One to three short sentences. Don't ask whether they're available; that line is added after your answer.`;
+
+/** Answer a freelancer's question from the anonymised brief, then ask for their yes/no. */
+export async function answerFreelancerQuestion(args: {
+  brief: Brief;
+  question: string;
+}): Promise<string> {
+  const answer = await write(
+    FREELANCER_QA_SYSTEM,
+    `Anonymised brief:\n${anonymizedBrief(args.brief)}\n\nTheir question:\n${args.question}`,
+  );
+  return `${answer}\n\nAre you open to it? A quick yes or no works.`;
 }
 
 // ------------------------------------------------ transactional templates

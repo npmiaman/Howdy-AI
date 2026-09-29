@@ -99,6 +99,27 @@ describe("saga edges", () => {
     expect(table("pending_matches")[0].phase).toBe("shortlist_sent");
   });
 
+  it("a freelancer's question is answered from the anonymised brief, then asked for a yes/no", async () => {
+    process.env.HOWDY_OUTREACH_DRYRUN = "false";
+    roster(6);
+    await scheduled();
+    advance(3 * HOUR + MIN);
+    await runCron();
+    const [a] = invited();
+    fakeLLM.on("text", ({ system, human }) =>
+      /freelancer's question/.test(system) ? `Budget is up to ${/\$\d+\/hr/.exec(human)?.[0] ?? "?"}.` : "ok",
+    );
+    const res = await postWebhook(
+      fakeMail.inbound({ from: a, text: "What's the budget exactly?", replyTo: fakeMail.last(a) }),
+    );
+    expect(res.body.action).toBe("freelancer_question");
+    const answer = fakeMail.last(a)!.text;
+    expect(answer).toMatch(/Budget is up to \$60\/hr/);
+    expect(answer).toMatch(/yes or no/i);
+    expect(answer).not.toContain(CLIENT); // anonymised
+    expect(invited()).toContain(a); // still waiting on their decision
+  });
+
   it("an unclear freelancer reply gets a yes/no follow-up, not a decision", async () => {
     process.env.HOWDY_OUTREACH_DRYRUN = "false";
     roster(6);
@@ -107,7 +128,7 @@ describe("saga edges", () => {
     await runCron();
     const [a] = invited();
     const res = await postWebhook(
-      fakeMail.inbound({ from: a, text: "What's the budget exactly?", replyTo: fakeMail.last(a) }),
+      fakeMail.inbound({ from: a, text: "Hmm, let me think about it", replyTo: fakeMail.last(a) }),
     );
     expect(res.body.action).toBe("freelancer_unclear");
     expect(fakeMail.last(a)?.text).toMatch(/yes or no/i);

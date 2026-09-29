@@ -146,7 +146,11 @@ function yesNo(text: string): "yes" | "no" | "unclear" {
 export const DEFAULT_HANDLERS: Record<string, Handler> = {
   brief: ({ human }) => heuristicBrief(human),
   assessment: ({ human }) => heuristicAssessment(human),
-  decision: ({ human }) => ({ decision: yesNo(lastReply(human, "Freelancer reply:")) }),
+  decision: ({ human }) => {
+    const reply = lastReply(human, "Freelancer reply:");
+    const d = yesNo(reply);
+    return { decision: d === "unclear" && reply.includes("?") ? "question" : d };
+  },
   yesno: ({ human }) => ({ answer: yesNo(lastReply(human, "Their reply:")) }),
   sentiment: ({ human }) => {
     const t = lastReply(human, "Their message:");

@@ -23,6 +23,7 @@ import {
   classifyFreelancerReply,
   handleFreelancerDecision,
 } from "@/lib/howdy/outreach";
+import { answerFreelancerQuestion } from "@/lib/howdy/outreach-content";
 import {
   findCheckinByMessageIds,
   findCheckinByThread,
@@ -277,6 +278,17 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
       const request = await getPendingById(candidate.requestId);
       if (!request) return ok("freelancer_orphaned");
       const decision = await classifyFreelancerReply(email.body);
+      if (decision === "question") {
+        await dispatch({
+          kind: "freelancer_question",
+          to: email.fromEmail,
+          subject: email.subject,
+          text: await answerFreelancerQuestion({ brief: request.brief, question: email.body }),
+          replyToMessageId: email.messageId,
+          threadId: thread.id,
+        });
+        return ok("freelancer_question");
+      }
       if (decision === "unclear") {
         await dispatch({
           kind: "freelancer_unclear",

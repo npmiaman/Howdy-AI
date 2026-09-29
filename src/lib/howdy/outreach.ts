@@ -460,15 +460,17 @@ export async function tellClient(
 // ---------------------------------------------------------------------------
 const DecisionSchema = z.object({
   decision: z
-    .enum(["yes", "no", "unclear"])
-    .describe("yes = open/available, no = decline, unclear = neither."),
+    .enum(["yes", "no", "question", "unclear"])
+    .describe(
+      "yes = open/available, no = decline, question = they ask about the gig before deciding, unclear = none of these.",
+    ),
 });
 
-const CLASSIFY_SYSTEM = `You classify a freelancer's reply to an availability check-in. Output one of: "yes" (they're open/interested/available), "no" (they decline or aren't available), or "unclear" (ambiguous — neither a clear yes nor no). Judge intent, not politeness.`;
+const CLASSIFY_SYSTEM = `You classify a freelancer's reply to an availability check-in. Output one of: "yes" (they're open/interested/available), "no" (they decline or aren't available), "question" (they ask something about the gig, like budget, timeline or scope, before deciding), or "unclear" (none of these). A reply that says yes and also asks a question is "yes". Judge intent, not politeness.`;
 
 export async function classifyFreelancerReply(
   text: string,
-): Promise<"yes" | "no" | "unclear"> {
+): Promise<"yes" | "no" | "question" | "unclear"> {
   const llm = getChatModel().withStructuredOutput(DecisionSchema, {
     name: "decision",
   });
