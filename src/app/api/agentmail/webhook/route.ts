@@ -2,33 +2,34 @@ import { HumanMessage } from "@langchain/core/messages";
 import { NextResponse } from "next/server";
 
 import {
+  type AgentMailIncomingMessage,
   isAgentMailConfigured,
   parseInboundPayload,
   replyToMessage,
 } from "@/lib/agentmail/client";
 import { runHowdyTurn } from "@/lib/howdy/agent";
 import {
+  findAwaitingCandidateBySender,
   findCandidateByOutreachThread,
-  listCandidates,
 } from "@/lib/howdy/candidates";
-import { getFreelancersByIds } from "@/lib/howdy/data";
+import { handleClientReply } from "@/lib/howdy/client-replies";
+import {
+  classifyInbound,
+  isJoinRequest,
+} from "@/lib/howdy/inbound-guard";
+import { dispatch } from "@/lib/howdy/mailer";
 import { loadMemories } from "@/lib/howdy/memories";
+import { maybeNotifyInbound, notifyOps } from "@/lib/howdy/notify";
 import {
   classifyFreelancerReply,
-  handleClientSelection,
   handleFreelancerDecision,
-  parseClientSelection,
 } from "@/lib/howdy/outreach";
-import { maybeNotifyInbound } from "@/lib/howdy/notify";
 import {
   findCheckinByThread,
+  findOpenCheckinBySender,
   handleCheckinReply,
 } from "@/lib/howdy/post-match";
-import {
-  getPendingById,
-  lastSentMatchForThread,
-  listRequestsInPhase,
-} from "@/lib/howdy/scheduler";
+import { getPendingById, latestRequestForThread } from "@/lib/howdy/scheduler";
 import {
   appendMessage,
   findOrCreateEmailThread,
@@ -36,31 +37,59 @@ import {
   markThreadProcessed,
   saveBrief,
 } from "@/lib/howdy/threads";
+import { verifyWebhook } from "@/lib/howdy/webhook-auth";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-function authorize(request: Request): NextResponse | null {
-  const expected = process.env.AGENTMAIL_WEBHOOK_SECRET;
-  if (!expected) return null; // permissive when no secret set; recommended in prod
-  const provided =
-    request.headers.get("x-agentmail-signature") ??
-    request.headers.get("x-webhook-secret") ??
-    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
-    new URL(request.url).searchParams.get("secret");
-  if (provided !== expected) {
-    return NextResponse.json(
-      { ok: false, error: "unauthorized" },
-      { status: 401 },
-    );
-  }
-  return null;
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.bridgecreatives.co";
+
+function ok(action: string, extra: Record<string, unknown> = {}) {
+  return NextResponse.json({ ok: true, action, ...extra });
+}
+
+/** Webhooks are retried; a message we've already stored was already handled. */
+async function alreadyHandled(messageId: string): Promise<boolean> {
+  if (!messageId) return false;
+  const { data } = await getSupabaseAdmin()
+    .from("messages")
+    .select("id")
+    .eq("gmail_message_id", messageId)
+    .limit(1);
+  return (data ?? []).length > 0;
+}
+
+async function isRosterFreelancer(email: string): Promise<boolean> {
+  const { data } = await getSupabaseAdmin()
+    .from("freelancers")
+    .select("id")
+    .ilike("email", email)
+    .limit(1);
+  return (data ?? []).length > 0;
+}
+
+/** Store a non-client inbound message on its own conversation (for visibility). */
+async function recordInbound(email: AgentMailIncomingMessage) {
+  const thread = await findOrCreateEmailThread({
+    gmailThreadId: email.threadId,
+    userEmail: email.fromEmail,
+    subject: email.subject,
+  });
+  await appendMessage({
+    threadId: thread.id,
+    role: "human",
+    content: email.body,
+    gmailMessageId: email.messageId,
+  });
+  return thread;
 }
 
 export async function POST(request: Request) {
-  const denied = authorize(request);
-  if (denied) return denied;
+  const raw = await request.text();
+  const auth = verifyWebhook(raw, request.headers);
+  if (!auth.ok)
+    return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
   if (!isAgentMailConfigured()) {
     return NextResponse.json(
@@ -83,7 +112,7 @@ export async function POST(request: Request) {
 
   let payload: unknown;
   try {
-    payload = await request.json();
+    payload = JSON.parse(raw);
   } catch {
     return NextResponse.json(
       { ok: false, error: "invalid_json" },
@@ -91,7 +120,7 @@ export async function POST(request: Request) {
     );
   }
 
-  let email;
+  let email: AgentMailIncomingMessage;
   try {
     email = parseInboundPayload(payload);
   } catch (err) {
@@ -100,152 +129,133 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: detail }, { status: 400 });
   }
 
-  if (!email.fromEmail || !email.threadId) {
-    return NextResponse.json({ ok: true, action: "skipped_no_from_or_thread" });
-  }
+  if (email.eventType && email.eventType !== "message.received")
+    return ok("ignored_event");
+  if (!email.fromEmail || !email.threadId) return ok("skipped_no_from_or_thread");
 
   try {
-    // Classify the sender up front (an outreach-thread match => freelancer),
-    // and fire a "1 new client / 1 new freelancer" alert to the ops inbox.
-    // Awaited (so it completes on serverless) but never throws.
-    const candidate = await findCandidateByOutreachThread(email.threadId);
+    if (await alreadyHandled(email.messageId)) return ok("duplicate");
+
+    // ------------------------------------------------------------------
+    // Guardrails before anything else: never engage with bounces, our own
+    // mail, the team's mail, threads Howdy is only CC'd on, or empty bodies.
+    // ------------------------------------------------------------------
+    const verdict = classifyInbound(email);
+    if (verdict === "ignored_automated" || verdict === "ignored_self" || verdict === "team_sender")
+      return ok(verdict);
+    if (verdict === "cc_only" || verdict === "empty_body") {
+      await notifyOps({
+        subject:
+          verdict === "cc_only"
+            ? "👀 Howdy was CC'd on a thread (no auto-reply sent)"
+            : "📎 Howdy got an email it couldn't read (no auto-reply sent)",
+        text: [
+          `From: ${email.fromEmail}`,
+          `To: ${email.to.join(", ") || "(none)"}`,
+          email.cc.length ? `Cc: ${email.cc.join(", ")}` : null,
+          `Re: ${email.subject || "(no subject)"}`,
+          "",
+          email.body ? `"${email.body.slice(0, 400)}"` : "(no readable text — likely attachments only)",
+          "",
+          "A human should take a look.",
+          "— Howdy",
+        ]
+          .filter((l) => l !== null)
+          .join("\n"),
+      });
+      return ok(verdict);
+    }
+
+    // Who is this? A freelancer replying to an invite, anyone replying to a
+    // post-match check-in, a would-be freelancer, or a client.
+    const candidate =
+      (await findCandidateByOutreachThread(email.threadId)) ??
+      (/are you open to|the client picked you|connecting you/i.test(email.subject)
+        ? await findAwaitingCandidateBySender(email.fromEmail)
+        : null);
+    const checkin = candidate
+      ? null
+      : ((await findCheckinByThread(email.threadId)) ??
+        (await findOpenCheckinBySender({ email: email.fromEmail, subject: email.subject })));
+    const joinRequest = !candidate && !checkin && isJoinRequest(email.subject);
+
     await maybeNotifyInbound({
       messageId: email.messageId,
       fromEmail: email.fromEmail,
       subject: email.subject,
       body: email.body,
-      isFreelancerThread: candidate !== null,
+      isFreelancerThread:
+        candidate !== null || joinRequest || checkin?.party === "freelancer",
     });
 
-    // ----------------------------------------------------------------------
-    // ROUTE 1 — is this a FREELANCER replying to an outreach check-in?
-    // Matched by the outreach thread we emailed them on. Their replies never
-    // touch the client conversation.
-    // ----------------------------------------------------------------------
+    // ------------------------------------------------------------------
+    // ROUTE 1 — a FREELANCER replying to an invite (or after being picked).
+    // ------------------------------------------------------------------
     if (candidate) {
-      // Record the freelancer's inbound reply on the conversation so it shows
-      // up in Momo (and mirrors to the backup DB) — not just our outreach.
-      const inThread = await findOrCreateEmailThread({
-        gmailThreadId: email.threadId,
-        userEmail: email.fromEmail,
-        subject: email.subject,
-      });
-      await appendMessage({
-        threadId: inThread.id,
-        role: "human",
-        content: email.body,
-        gmailMessageId: email.messageId,
-      });
+      await recordInbound(email);
       const request = await getPendingById(candidate.requestId);
-      if (request) {
-        const decision = await classifyFreelancerReply(email.body);
-        if (decision === "unclear") {
-          const ask =
-            "Just to confirm — are you open to this one? A quick yes or no works.";
-          await replyToMessage({ messageId: email.messageId, text: ask });
-          await appendMessage({ threadId: inThread.id, role: "ai", content: ask });
-          return NextResponse.json({ ok: true, action: "freelancer_unclear" });
-        }
-        const result = await handleFreelancerDecision({
-          candidate,
-          accepted: decision === "yes",
-          request,
+      if (!request) return ok("freelancer_orphaned");
+      const decision = await classifyFreelancerReply(email.body);
+      if (decision === "unclear") {
+        await dispatch({
+          kind: "freelancer_unclear",
+          to: email.fromEmail,
+          subject: email.subject,
+          text: "Just to confirm — are you open to this one? A quick yes or no works.",
+          replyToMessageId: email.messageId,
         });
-        return NextResponse.json({
-          ok: true,
-          action: `freelancer_${result.outcome}`,
-          shortlistReady: result.shortlistReady,
-        });
+        return ok("freelancer_unclear");
       }
+      const result = await handleFreelancerDecision({
+        candidate,
+        accepted: decision === "yes",
+        request,
+      });
+      return ok(`freelancer_${result.outcome}`, { shortlistReady: result.shortlistReady });
     }
 
-    // ----------------------------------------------------------------------
-    // ROUTE 1b — is this a reply to a post-match CHECK-IN ("how was the call?")
-    // from either the company or the freelancer?
-    // ----------------------------------------------------------------------
-    const checkin = await findCheckinByThread(email.threadId);
+    // ------------------------------------------------------------------
+    // ROUTE 2 — a reply to a post-match CHECK-IN ("how was the call?").
+    // ------------------------------------------------------------------
     if (checkin) {
-      const inThread = await findOrCreateEmailThread({
-        gmailThreadId: email.threadId,
-        userEmail: email.fromEmail,
-        subject: email.subject,
-      });
+      await recordInbound(email);
+      const result = await handleCheckinReply({ checkin, text: email.body });
+      return ok("checkin_reply", { stage: result.stage });
+    }
+
+    // ------------------------------------------------------------------
+    // ROUTE 3 — freelancers writing in: never treated as a hiring brief.
+    // ------------------------------------------------------------------
+    const firstName = email.fromName?.split(" ")[0];
+    if (joinRequest) {
+      await recordInbound(email);
+      const text = [
+        `Hey${firstName ? ` ${firstName}` : ""}! Thanks for reaching out about joining Howdy's roster.`,
+        "",
+        `We review every freelancer by hand. The fastest way in is the short application here: ${SITE_URL}/freelancers — it takes two minutes and goes straight to the team.`,
+        "",
+        "Howdy",
+      ].join("\n");
+      await replyToMessage({ messageId: email.messageId, text });
+      return ok("freelancer_application");
+    }
+    if (await isRosterFreelancer(email.fromEmail)) {
+      const thread = await recordInbound(email);
+      const text = `Thanks${firstName ? ` ${firstName}` : ""} — noted. I've passed this along to the team.`;
+      const sent = await replyToMessage({ messageId: email.messageId, text });
       await appendMessage({
-        threadId: inThread.id,
-        role: "human",
-        content: email.body,
-        gmailMessageId: email.messageId,
+        threadId: thread.id,
+        role: "ai",
+        content: text,
+        gmailMessageId: sent.messageId,
       });
-      const result = await handleCheckinReply({
-        checkin,
-        text: email.body,
-      });
-      return NextResponse.json({
-        ok: true,
-        action: "checkin_reply",
-        stage: result.stage,
-      });
+      return ok("freelancer_inbound");
     }
 
-    // ----------------------------------------------------------------------
-    // ROUTE 2 — is this a CLIENT picking from a shortlist we sent them?
-    // ----------------------------------------------------------------------
-    if (isSupabaseConfigured()) {
-      const sb = getSupabaseAdmin();
-      const { data: threadRow } = await sb
-        .from("threads")
-        .select("id")
-        .eq("gmail_thread_id", email.threadId)
-        .maybeSingle();
-      if (threadRow?.id) {
-        const shortlisted = await listRequestsInPhase(["shortlist_sent"]);
-        const req = shortlisted.find((r) => r.threadId === threadRow.id);
-        if (req) {
-          const cands = await listCandidates(req.id);
-          const fmap = new Map(
-            (
-              await getFreelancersByIds(cands.map((c) => c.freelancerId))
-            ).map((f) => [f.id, f]),
-          );
-          const chosen = await parseClientSelection({
-            text: email.body,
-            candidates: cands,
-            freelancers: fmap,
-          });
-          if (chosen.length > 0) {
-            await appendMessage({
-              threadId: threadRow.id,
-              role: "human",
-              content: email.body,
-              gmailMessageId: email.messageId,
-            });
-            const result = await handleClientSelection({
-              request: req,
-              chosenFreelancerIds: chosen,
-            });
-            const ack =
-              result.chosen === 1
-                ? "Perfect — connecting you now. Intro landing in your inbox in a couple minutes."
-                : `Great picks — connecting you with all ${result.chosen}. Intros landing in your inbox shortly.`;
-            await replyToMessage({ messageId: email.messageId, text: ack });
-            await appendMessage({
-              threadId: threadRow.id,
-              role: "ai",
-              content: ack,
-            });
-            return NextResponse.json({
-              ok: true,
-              action: "client_selected",
-              chosen: result.chosen,
-            });
-          }
-        }
-      }
-    }
-
-    // ----------------------------------------------------------------------
-    // ROUTE 3 — default: client brief conversation.
-    // ----------------------------------------------------------------------
+    // ------------------------------------------------------------------
+    // ROUTE 4 — a CLIENT. If their conversation already has a request, route
+    // by where that request actually is; otherwise it's the brief conversation.
+    // ------------------------------------------------------------------
     const thread = await findOrCreateEmailThread({
       gmailThreadId: email.threadId, // reusing same column for any provider's thread id
       userEmail: email.fromEmail,
@@ -260,20 +270,29 @@ export async function POST(request: Request) {
     });
 
     const history = await loadMessages(thread.id);
-    const messagesForAgent =
-      history.length > 0 ? history : [new HumanMessage(email.body)];
-
     const memories = await loadMemories(email.fromEmail);
-    const previousMatch = await lastSentMatchForThread(thread.id);
+    const request = await latestRequestForThread(thread.id);
+
+    if (request && request.phase !== "failed") {
+      const { action } = await handleClientReply({
+        request,
+        thread,
+        history,
+        memories,
+        text: email.body,
+        inboundMessageId: email.messageId,
+      });
+      await markThreadProcessed(thread.id);
+      return ok(action);
+    }
 
     const turn = await runHowdyTurn({
-      messages: messagesForAgent,
+      messages: history.length > 0 ? history : [new HumanMessage(email.body)],
       brief: thread.brief,
       threadId: thread.id,
       userEmail: email.fromEmail,
       subject: email.subject,
       memories,
-      hasPreviousMatch: previousMatch !== null,
     });
 
     await saveBrief(thread.id, turn.brief);
@@ -294,9 +313,7 @@ export async function POST(request: Request) {
 
     await markThreadProcessed(thread.id);
 
-    return NextResponse.json({
-      ok: true,
-      action: turn.scheduled ? "scheduled_match" : "clarified",
+    return ok(turn.scheduled ? "scheduled_match" : "clarified", {
       scheduled: turn.scheduled
         ? {
             id: turn.scheduled.id,
@@ -307,6 +324,12 @@ export async function POST(request: Request) {
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error(`[agentmail-webhook] failed for ${email.messageId}:`, detail);
+    // A retry of this delivery will be skipped as a duplicate once the message
+    // is stored, so make sure a human hears about the failure.
+    await notifyOps({
+      subject: "🚨 Howdy failed to handle an inbound email",
+      text: `From: ${email.fromEmail}\nRe: ${email.subject}\nError: ${detail}\n\n"${email.body.slice(0, 400)}"\n\n— Howdy`,
+    });
     return NextResponse.json({ ok: false, error: detail }, { status: 500 });
   }
 }

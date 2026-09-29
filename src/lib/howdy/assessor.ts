@@ -8,11 +8,12 @@ import {
   type BriefAssessment,
   FIELD_PRIORITY,
   type FieldStatus,
+  REQUIRED_FIELDS,
 } from "./types";
 
 // After this many of Howdy's clarifying turns, stop interrogating and proceed
 // with whatever we have — a backstop against looping forever.
-export const MAX_CLARIFY_TURNS = 12;
+export const MAX_CLARIFY_TURNS = 6;
 
 const FIELD_KEYS = FIELD_PRIORITY.map((f) => f.key) as [string, ...string[]];
 
@@ -50,7 +51,7 @@ function fieldGuide(): string {
 
 const ASSESS_SYSTEM_PROMPT = `You are Howdy, an AI freelancer-matching agent. Your job in this step is to AUDIT how well you understand the hirer's brief, field by field, and decide the single best next question.
 
-You must understand every field below deeply before a match can be made. For EACH field, assign one status:
+Audit every field below. The first four (description, role, deadline, budget) must be clear before a match can be made; the rest improve the match when the hirer offers them. For EACH field, assign one status:
 - "clear": the hirer gave a concrete, specific answer good enough to match on.
 - "vague": the hirer touched on it but the answer is too thin, generic, or ambiguous to match on (e.g. budget "reasonable", references "something modern", deadline "soon"). This needs a sharper follow-up.
 - "missing": the hirer hasn't addressed it at all yet.
@@ -110,10 +111,12 @@ export async function assessBrief(
     (f) => f.status === "vague" || f.status === "missing",
   );
 
-  // Hard backstop: after enough clarifying turns, stop and proceed with what
-  // we have rather than interrogate the hirer indefinitely.
+  // Ready to match once the required core is clear (or explicitly N/A). Hard
+  // backstop: after enough clarifying turns, proceed with what we have rather
+  // than interrogate the hirer indefinitely.
+  const requiredOpen = unresolved.filter((f) => REQUIRED_FIELDS.includes(f.field));
   const hitTurnCap = clarifyTurns >= MAX_CLARIFY_TURNS;
-  const allResolved = unresolved.length === 0 || hitTurnCap;
+  const allResolved = requiredOpen.length === 0 || hitTurnCap;
 
   // Pick the next question by our own priority order, not the model's, but use
   // the model's phrasing for it (it has the context to make it sharp).

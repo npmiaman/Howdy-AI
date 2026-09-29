@@ -7,7 +7,7 @@ import { randomInt } from "node:crypto";
 
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 
-import type { Brief } from "./types";
+import type { Brief, RequestPhase } from "./types";
 import {
   FALLBACK_DELIVERY_HOURS,
   FALLBACK_MAX_AGE_HOURS,
@@ -26,6 +26,8 @@ export type PendingMatch = {
   scheduledAt: Date;
   processedAt: Date | null;
   matchedFreelancerId: string | null;
+  phase: RequestPhase;
+  createdAt: Date;
 };
 
 /**
@@ -128,9 +130,134 @@ export async function schedulePendingMatch(
     scheduledAt,
     processedAt: null,
     matchedFreelancerId: null,
+    phase: "matching",
+    createdAt: new Date(),
   };
   memoryStore.push(pm);
   return pm;
+}
+
+/**
+ * Create a request that starts immediately (no lazy-match defer) and is
+ * already claimed — used for rematches, which recruit right away. Its own
+ * created_at restarts the 24h shortlist guarantee for the new search.
+ */
+export async function createImmediateRequest(
+  args: ScheduleArgs,
+): Promise<PendingMatch> {
+  const now = new Date().toISOString();
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("pending_matches")
+    .insert({
+      thread_id: args.threadId,
+      user_email: args.userEmail,
+      subject: args.subject ?? null,
+      brief: args.brief,
+      scheduled_at: now,
+      processed_at: now,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return rowToPendingMatch(data);
+}
+
+/** The most recent request on a conversation — what a client reply is about. */
+export async function latestRequestForThread(
+  threadId: string,
+): Promise<PendingMatch | null> {
+  if (!isSupabaseConfigured()) {
+    return (
+      memoryStore
+        .filter((pm) => pm.threadId === threadId)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null
+    );
+  }
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("pending_matches")
+    .select("*")
+    .eq("thread_id", threadId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return data?.[0] ? rowToPendingMatch(data[0]) : null;
+}
+
+/** Keep a request's brief current when the client adds details mid-search. */
+export async function updateRequestBrief(id: string, brief: Brief): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("pending_matches")
+    .update({ brief })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+// ------------------------------------------------------------------ claims
+// Each cron step claims its row with a conditional update before doing any
+// work, so overlapping runs (GitHub + Vercel cron, a slow run overlapping the
+// next tick) can never process the same step twice. A failed step releases
+// its claim so the next run retries it.
+
+/** Claim a due request for starting outreach (processed_at null → now). */
+export async function claimPending(id: string): Promise<boolean> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("pending_matches")
+    .update({ processed_at: new Date().toISOString() })
+    .eq("id", id)
+    .is("processed_at", null)
+    .select("id");
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}
+
+export async function releasePending(id: string): Promise<void> {
+  await getSupabaseAdmin()
+    .from("pending_matches")
+    .update({ processed_at: null })
+    .eq("id", id);
+}
+
+/** Claim a request for the 24h fallback delivery (shortlist_sent_at null → now). */
+export async function claimFallback(id: string): Promise<boolean> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("pending_matches")
+    .update({ shortlist_sent_at: new Date().toISOString() })
+    .eq("id", id)
+    .is("shortlist_sent_at", null)
+    .select("id");
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}
+
+export async function releaseFallback(id: string): Promise<void> {
+  await getSupabaseAdmin()
+    .from("pending_matches")
+    .update({ shortlist_sent_at: null })
+    .eq("id", id);
+}
+
+/** Claim a due intro send (connect_after cleared so no other run picks it up). */
+export async function claimConnect(id: string): Promise<boolean> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("pending_matches")
+    .update({ connect_after: null })
+    .eq("id", id)
+    .eq("phase", "connecting")
+    .lte("connect_after", new Date().toISOString())
+    .select("id");
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}
+
+export async function releaseConnect(id: string): Promise<void> {
+  await getSupabaseAdmin()
+    .from("pending_matches")
+    .update({ connect_after: new Date().toISOString() })
+    .eq("id", id);
 }
 
 export async function listDuePendingMatches(
@@ -178,6 +305,7 @@ export async function listFallbackDue(
     .select("*")
     .lte("created_at", cutoff)
     .gte("created_at", floor)
+    .is("shortlist_sent_at", null)
     .or("phase.eq.outreach,and(phase.eq.matching,processed_at.is.null)")
     .order("created_at", { ascending: true });
   if (error) throw error;
@@ -323,6 +451,8 @@ type SupabasePendingRow = {
   scheduled_at: string;
   processed_at: string | null;
   matched_freelancer_id: string | null;
+  phase: RequestPhase;
+  created_at: string;
 };
 
 function rowToPendingMatch(row: SupabasePendingRow): PendingMatch {
@@ -335,5 +465,7 @@ function rowToPendingMatch(row: SupabasePendingRow): PendingMatch {
     scheduledAt: new Date(row.scheduled_at),
     processedAt: row.processed_at ? new Date(row.processed_at) : null,
     matchedFreelancerId: row.matched_freelancer_id,
+    phase: row.phase ?? "matching",
+    createdAt: new Date(row.created_at),
   };
 }

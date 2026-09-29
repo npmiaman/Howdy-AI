@@ -125,9 +125,12 @@ function roster(human: string): Array<{ id: string; name: string }> {
   }));
 }
 
+/** The text after `label`, up to the prompt's next blank line. */
 function lastReply(human: string, label: string): string {
   const i = human.lastIndexOf(label);
-  return i >= 0 ? human.slice(i + label.length) : human;
+  const rest = (i >= 0 ? human.slice(i + label.length) : human).replace(/^\s+/, "");
+  const end = rest.indexOf("\n\n");
+  return end >= 0 ? rest.slice(0, end) : rest;
 }
 
 function picks(text: string, list: Array<{ id: string; name: string }>): string[] {

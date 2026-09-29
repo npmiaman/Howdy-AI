@@ -184,6 +184,19 @@ export const FIELD_PRIORITY: FieldSpec[] = [
   },
 ];
 
+/**
+ * The fields a brief needs before Howdy starts recruiting. Everything else in
+ * FIELD_PRIORITY sharpens ranking when the client volunteers it, but isn't
+ * worth another round-trip: with all twelve required, no real client ever
+ * reached matching (see DECISIONS.md 2026-09-29).
+ */
+export const REQUIRED_FIELDS: (keyof Brief)[] = [
+  "description",
+  "role",
+  "deadline",
+  "budget_usd_per_hour_max",
+];
+
 export type FieldStatus = "clear" | "vague" | "missing" | "not_applicable";
 
 export type FieldAssessment = {
@@ -252,6 +265,8 @@ export type MatchCandidate = {
   outreachMessageId: string | null;
   invitedAt: Date | null;
   respondedAt: Date | null;
+  /** When this candidate was put in front of the client (shortlist email). */
+  shownToClientAt: Date | null;
 };
 
 /** A ranked candidate straight from the matcher, before persistence. */

@@ -12,7 +12,8 @@ import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 import { listCandidates } from "./candidates";
 import { getFreelancersByIds } from "./data";
 import { dispatch } from "./mailer";
-import { restartOutreach } from "./outreach";
+import { notifyOps } from "./notify";
+import { startRematch } from "./outreach";
 import {
   checkinEmail,
   classifyCallSentiment,
@@ -149,12 +150,22 @@ export async function sendDueCheckins(): Promise<{ sent: number }> {
     .from("post_match_checkins")
     .select("*")
     .eq("status", "scheduled")
+    .is("sent_at", null)
     .lte("scheduled_at", new Date().toISOString());
   if (error) throw error;
   const due = (data ?? []).map(rowToCheckin);
 
   let sent = 0;
   for (const ch of due) {
+    // Claim before sending so overlapping cron runs send each check-in once.
+    const { data: claimed } = await sb
+      .from("post_match_checkins")
+      .update({ sent_at: new Date().toISOString() })
+      .eq("id", ch.id)
+      .eq("status", "scheduled")
+      .is("sent_at", null)
+      .select("id");
+    if (!claimed?.length) continue;
     try {
       const counterpart = await counterpartName(ch);
       const text = await checkinEmail({
@@ -178,6 +189,7 @@ export async function sendDueCheckins(): Promise<{ sent: number }> {
       sent += 1;
     } catch (e) {
       console.error("[post-match] sendCheckin failed:", e);
+      await update(ch.id, { sent_at: null }); // release the claim → retry next run
     }
   }
   return { sent };
@@ -196,12 +208,37 @@ export async function findCheckinByThread(
     .select("*")
     .eq("checkin_thread_id", threadId)
     .not("status", "in", "(done)")
-    .maybeSingle();
+    .order("sent_at", { ascending: false })
+    .limit(1);
   if (error) {
     console.warn("[post-match] findByThread:", error.message);
     return null;
   }
-  return data ? rowToCheckin(data as CheckinRow) : null;
+  return data?.[0] ? rowToCheckin(data[0] as CheckinRow) : null;
+}
+
+/**
+ * Fallback when a check-in reply arrives under a new provider thread id: an
+ * open check-in to this sender, but only if the subject is a check-in reply —
+ * so an unrelated new email from the same person is never swallowed here.
+ */
+export async function findOpenCheckinBySender(args: {
+  email: string;
+  subject: string;
+}): Promise<PostMatchCheckin | null> {
+  if (!isSupabaseConfigured() || !args.email) return null;
+  if (!/how was the call|how'd the follow-up go|your call/i.test(args.subject))
+    return null;
+  const sb = getSupabaseAdmin();
+  const { data, error } = await sb
+    .from("post_match_checkins")
+    .select("*")
+    .ilike("to_email", args.email)
+    .not("status", "in", "(done,scheduled)")
+    .order("sent_at", { ascending: false })
+    .limit(1);
+  if (error) return null;
+  return data?.[0] ? rowToCheckin(data[0] as CheckinRow) : null;
 }
 
 export async function handleCheckinReply(args: {
@@ -265,7 +302,18 @@ export async function handleCheckinReply(args: {
       return { stage: "digging_more" };
     }
 
-    // Enough detail — branch on sentiment.
+    // Enough detail — branch on sentiment. A freelancer can't be "rematched"
+    // to a different client, so their bad-call feedback goes to the team.
+    if (sentiment === "bad" && ch.party === "freelancer") {
+      const ack = await feedbackAck({ party: ch.party, sentiment: "bad" });
+      await reply(ack);
+      await update(ch.id, { feedback, turns, status: "done" });
+      await notifyOps({
+        subject: "⚠️ Freelancer had a bad call on Howdy",
+        text: `${ch.toEmail} said their call didn't go well:\n\n${feedback}\n\n— Howdy`,
+      });
+      return { stage: "done_bad" };
+    }
     if (sentiment === "bad") {
       const offer = await rematchOffer(ch.party);
       const sent = await reply(offer);
@@ -302,12 +350,14 @@ export async function handleCheckinReply(args: {
       "do you want to be matched with someone else?",
     );
     if (yn === "yes") {
-      await runRematch(ch);
+      const started = await runRematch(ch);
       await reply(
-        "On it — I'll line up someone who's a better fit and be back shortly.",
+        started
+          ? "On it — I'll line up someone who's a better fit and send you a fresh shortlist within 24 hours."
+          : "I've already been through everyone in my network who fits this brief. If you can loosen one thing — budget, timeline, or style — reply with it and I'll search again.",
       );
       await update(ch.id, { status: "done" });
-      return { stage: "rematch_started" };
+      return { stage: started ? "rematch_started" : "rematch_unavailable" };
     }
     const ack = await feedbackAck({ party: ch.party, sentiment: "bad" });
     await reply(ack);
@@ -364,15 +414,17 @@ async function scheduleRound2(ch: PostMatchCheckin): Promise<void> {
   );
 }
 
-async function runRematch(ch: PostMatchCheckin): Promise<void> {
+async function runRematch(ch: PostMatchCheckin): Promise<boolean> {
   const request = await getPendingById(ch.requestId);
-  if (!request) return;
+  if (!request) return false;
   const candidates = await listCandidates(ch.requestId);
   const disliked = candidates.find((c) => c.id === ch.candidateId);
-  await restartOutreach(request, {
+  const { started } = await startRematch({
+    request,
     excludeFreelancerIds: disliked ? [disliked.freelancerId] : [],
     reason: ch.feedback ?? "previous match was not the right fit",
   });
+  return started;
 }
 
 async function freelancerMap(

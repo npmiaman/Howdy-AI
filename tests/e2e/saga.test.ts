@@ -138,7 +138,11 @@ describe("happy path: brief → recruit → shortlist → intro → check-in →
     const pick = await clientSays(`Let's go with ${pickName}`);
     expect(pick.body.action).toBe("client_selected");
     const chosenEmail = emailOf(shown[0].freelancer_id);
-    expect(fakeMail.last(chosenEmail)?.subject).toMatch(/connecting you/i);
+    // The heads-up goes out on their invite thread (the fake LLM echoes the
+    // prompt, so the text identifies which message this is).
+    const notice = fakeMail.last(chosenEmail)!;
+    expect(notice.threadId).toBe(invitesTo(chosenEmail)[0].threadId);
+    expect(notice.text).toMatch(/client picked them/i);
     expect(requests()[0].phase).toBe("connecting");
 
     // A few minutes later the intro goes out, CC'ing both.

@@ -93,8 +93,7 @@ function cmp(a: unknown, b: unknown): number {
 function eqv(a: unknown, b: unknown): boolean {
   if (isIsoDate(a) && isIsoDate(b))
     return new Date(a).getTime() === new Date(b).getTime();
-  // eslint-disable-next-line eqeqeq
-  return a == b || String(a) === String(b);
+  return String(a) === String(b);
 }
 
 function likeToRegex(pattern: string): RegExp {
@@ -467,7 +466,10 @@ export class FakeSupabase {
       )
       .map((f) => {
         const vec = parseVector(f.embedding);
-        const { embedding: _e, _seq: _s, created_at: _c, ...rest } = f;
+        const rest = { ...f };
+        delete rest.embedding;
+        delete rest._seq;
+        delete rest.created_at;
         return { ...rest, similarity: vec ? cosine(q, vec) : null };
       })
       // Rows without an embedding sort last, like `order by embedding <=> q`.
