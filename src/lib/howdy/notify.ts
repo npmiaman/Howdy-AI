@@ -17,6 +17,27 @@ const NOTIFY_LIST = (
   .filter(Boolean);
 
 /**
+ * Send an internal alert to the ops inbox(es). Never throws — an alert failure
+ * must never break the request that triggered it.
+ */
+export async function notifyOps(args: {
+  subject: string;
+  text: string;
+}): Promise<void> {
+  try {
+    if (NOTIFY_LIST.length === 0) return;
+    await sendFreshEmail({
+      to: NOTIFY_LIST[0],
+      cc: NOTIFY_LIST.slice(1),
+      subject: args.subject,
+      text: args.text,
+    });
+  } catch (err) {
+    console.error("[notify] ops alert failed:", err);
+  }
+}
+
+/**
  * Fire a "1 new client / 1 new freelancer" alert for an inbound message.
  * Self-contained and never throws — a notification failure must never break
  * message processing. Deduped on gmail_message_id so a re-delivered webhook
@@ -75,13 +96,7 @@ export async function maybeNotifyInbound(args: {
       `— Howdy`,
     ].join("\n");
 
-    if (NOTIFY_LIST.length === 0) return;
-    await sendFreshEmail({
-      to: NOTIFY_LIST[0],
-      cc: NOTIFY_LIST.slice(1),
-      subject,
-      text,
-    });
+    await notifyOps({ subject, text });
   } catch (err) {
     console.error("[notify] inbound notification failed:", err);
   }
