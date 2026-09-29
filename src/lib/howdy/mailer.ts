@@ -10,6 +10,7 @@ import { replyToMessage, sendFreshEmail } from "@/lib/agentmail/client";
 import { envList } from "@/lib/utils";
 
 import { notifyOps } from "./notify";
+import { suppressedAmong } from "./suppression";
 import { isPaused, takeoverLink } from "./takeover";
 import { appendMessage } from "./threads";
 
@@ -66,6 +67,12 @@ export async function dispatch(args: {
       ].join("\n"),
     });
     return { messageId: "held", threadId: "held", delivered: false };
+  }
+  // Never email anyone who has opted out.
+  const optedOut = await suppressedAmong([args.to, ...(args.cc ?? [])]);
+  if (optedOut.length > 0) {
+    console.log(`[saga:SUPPRESSED] ${args.kind} → ${optedOut.join(", ")} (opted out)`);
+    return { messageId: "suppressed", threadId: "suppressed", delivered: false };
   }
   if (!wouldSend([args.to, ...(args.cc ?? [])])) {
     const id = `dry_${Math.random().toString(36).slice(2, 10)}`;

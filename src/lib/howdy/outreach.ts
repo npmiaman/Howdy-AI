@@ -55,6 +55,7 @@ import {
   type PendingMatch,
   queueRequestNow,
 } from "./scheduler";
+import { OPT_OUT_LINE } from "./suppression";
 import { getLatestGmailMessageId } from "./threads";
 import {
   type Brief,
@@ -153,7 +154,7 @@ async function inviteCandidates(
           kind: "freelancer_invite",
           to: f.email,
           subject: `Quick one — are you open to a ${brief.role ?? "creative"} gig?`,
-          text: await freelancerPitch({ freelancer: f, brief }),
+          text: `${await freelancerPitch({ freelancer: f, brief })}\n\n${OPT_OUT_LINE}`,
         });
         await recordOutreach({
           candidateId: c.id,

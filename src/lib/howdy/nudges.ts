@@ -10,6 +10,7 @@ import { firstName } from "@/lib/utils";
 
 import { claimRow } from "./claims";
 import { dispatch, wouldSend } from "./mailer";
+import { OPT_OUT_LINE } from "./suppression";
 
 export const NUDGE_AFTER_HOURS = 48;
 export const NUDGE_MAX_AGE_DAYS = 14;
@@ -21,6 +22,8 @@ function nudgeText(firstName: string): string {
     "Just bumping this in case it got buried. Who are you looking to hire? One line about the project is plenty to get me started.",
     "",
     "Howdy",
+    "",
+    OPT_OUT_LINE,
   ].join("\n");
 }
 

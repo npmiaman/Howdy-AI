@@ -37,6 +37,7 @@ import {
   saveBrief,
 } from "@/lib/howdy/threads";
 import { hitRateLimit, LIMITS, spendAiTurn } from "@/lib/howdy/rate-limit";
+import { isStopRequest, suppress, suppressedAmong, unsuppress } from "@/lib/howdy/suppression";
 import { humanIsHandling, takeoverLink } from "@/lib/howdy/takeover";
 import { verifyWebhook } from "@/lib/howdy/webhook-auth";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
@@ -235,6 +236,26 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
       applied ||
       rosterIds.length > 0 ||
       checkin?.party === "freelancer";
+    // ------------------------------------------------------------------
+    // Opt-outs: a STOP reply means no more email (and, from a freelancer,
+    // no to the invite). Anyone else who opted out and writes in again is
+    // opting back in.
+    // ------------------------------------------------------------------
+    if (isStopRequest(email.body)) {
+      await recordInbound(email);
+      await suppress(email.fromEmail, "replied STOP");
+      if (candidate) {
+        const request = await getPendingById(candidate.requestId);
+        if (request) await handleFreelancerDecision({ candidate, accepted: false, request });
+      }
+      await replyToMessage({
+        messageId: email.messageId,
+        text: "Done — you won't get any more emails from Howdy. If that was a mistake, just reply and I'll pick things back up.",
+      });
+      return ok("unsubscribed");
+    }
+    if ((await suppressedAmong([email.fromEmail])).length > 0) await unsuppress(email.fromEmail);
+
     // The "1 new message" alert, sent once Howdy knows it's handling the email.
     const notify = (note?: string) =>
       maybeNotifyInbound({
