@@ -229,5 +229,18 @@ describe("saga edges", () => {
     expect(res.body.shortlistReady).toBe(false);
     expect(fakeMail.to(CLIENT)).toHaveLength(before);
   });
+
+  it("a roster freelancer with no rate recorded is shown as 'rate on request', never $0/hr", async () => {
+    process.env.HOWDY_OUTREACH_DRYRUN = "false";
+    seedFreelancers([freelancer({ rate_usd_per_hour: 0 }), freelancer({ rate_usd_per_hour: 0 })]);
+    await scheduled();
+    advance(3 * HOUR + MIN);
+    await runCron();
+    advance(17 * HOUR);
+    await runCron();
+    const shortlist = fakeMail.last(CLIENT)!;
+    expect(shortlist.text).toMatch(/rate on request/);
+    expect(shortlist.text).not.toMatch(/\$0\/hr/);
+  });
 });
 

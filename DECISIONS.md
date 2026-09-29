@@ -1,5 +1,24 @@
 # Decisions
 
+## 2026-09-29 (later) — Take-over, limits, opt-outs, billing, digest
+
+- **Human takeover is detected, not declared.** Howdy labels its own sends
+  `howdy-auto`; an unlabelled outbound message on a thread means a person
+  replied, and the conversation pauses. Chosen over a toggle in Momo (not in
+  this repo) or email commands (easy to forget). Existing conversations
+  start paused (migration 0007) because the team handles all of them today.
+- **Rate limits live in Postgres** (no new vendor), fail open, env-tunable.
+  The daily AI budget exists because the Gemini key is on the free tier.
+- **Opt-out is strict:** only a reply whose first line is STOP/unsubscribe
+  counts; any real message later opts back in.
+- **Billing phase 1 only records and discloses** ($50/intro as on the
+  site). Charging waits on the owner's pricing decisions.
+- **Model pinned to gemini-3.5-flash-lite** after a live check: 11/12
+  intents, ~1s median, vs 62s for gemini-flash-latest.
+- **Ranking quality is limited by roster data**, not just the ranker: on the
+  first answer-key run neither on-roster human pick made the top 3; Joy's
+  profile is role "Other" with a 42-char bio, and every rate is 0.
+
 ## 2026-09-29 — Make the flow work end to end (owner asked: "the entire workflow should work end to end")
 
 **Evidence that drove this.** Production data: since the saga shipped, no

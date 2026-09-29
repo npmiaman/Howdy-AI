@@ -3,7 +3,9 @@ import { z } from "zod";
 
 import { sendFreshEmail } from "@/lib/agentmail/client";
 import { type RecordResult, recordApplication } from "@/lib/howdy/applications";
+import { requestMeta } from "@/lib/howdy/leads";
 import { notifyOps } from "@/lib/howdy/notify";
+import { hitRateLimit, LIMITS } from "@/lib/howdy/rate-limit";
 import { errorMessage, firstName } from "@/lib/utils";
 
 export const runtime = "nodejs";
@@ -138,6 +140,13 @@ function opsAlert(
 }
 
 export async function POST(request: Request) {
+  const { ip: callerIp } = requestMeta(request);
+  if (callerIp && !(await hitRateLimit(`form:apply:${callerIp}`, LIMITS.formPerIp()))) {
+    return NextResponse.json(
+      { ok: false, error: "rate_limited", message: "Too many submissions — try again in an hour." },
+      { status: 429 },
+    );
+  }
   let payload: unknown;
   try {
     payload = await request.json();

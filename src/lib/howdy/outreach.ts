@@ -17,6 +17,7 @@ import { z } from "zod";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 import { firstName } from "@/lib/utils";
 
+import { recordBillableIntro } from "./billing";
 import { leaseFree, releaseClaim } from "./claims";
 import {
   claimForInvite,
@@ -55,6 +56,7 @@ import {
   type PendingMatch,
   queueRequestNow,
 } from "./scheduler";
+import { OPT_OUT_LINE } from "./suppression";
 import { getLatestGmailMessageId } from "./threads";
 import {
   type Brief,
@@ -153,7 +155,7 @@ async function inviteCandidates(
           kind: "freelancer_invite",
           to: f.email,
           subject: `Quick one — are you open to a ${brief.role ?? "creative"} gig?`,
-          text: await freelancerPitch({ freelancer: f, brief }),
+          text: `${await freelancerPitch({ freelancer: f, brief })}\n\n${OPT_OUT_LINE}`,
         });
         await recordOutreach({
           candidateId: c.id,
@@ -581,6 +583,12 @@ export async function sendDueConnects(
         text: intro,
       });
       await transitionCandidate(c.id, ["connecting"], "connected");
+      await recordBillableIntro({
+        requestId: request.id,
+        candidateId: c.id,
+        clientEmail: request.userEmail,
+        freelancerId: f.id,
+      });
       connected += 1;
     }
     if (connecting.length > 0) {

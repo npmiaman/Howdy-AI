@@ -21,6 +21,8 @@ const UNIQUE: Record<string, string[][]> = {
   match_candidates: [["request_id", "freelancer_id"]],
   post_match_checkins: [["request_id", "candidate_id", "party", "round"]],
   freelancers: [["id"]],
+  billable_intros: [["candidate_id"]],
+  email_suppressions: [["email"]],
 };
 
 const DEFAULTS: Record<string, () => Row> = {
@@ -60,10 +62,13 @@ const DEFAULTS: Record<string, () => Row> = {
     subject: null,
     brief: {},
     last_processed_at: null,
+    ai_paused: false,
+    ai_mode_changed_at: null,
   }),
   messages: () => ({ gmail_message_id: null }),
   freelancers: () => ({ embedding: null }),
   freelancer_applications: () => ({ status: "pending", reviewed_at: null }),
+  billable_intros: () => ({ invoiced_at: null, fee_usd: 50 }),
 };
 
 const CASCADE: Record<string, Array<{ table: string; fk: string }>> = {
@@ -449,6 +454,23 @@ export class FakeSupabase {
   }
 
   async rpc(fn: string, args: Record<string, unknown>): Promise<Result> {
+    if (fn === "hit_rate_limit") {
+      const key = String(args.p_key);
+      const windowMs = Number(args.p_window_seconds) * 1000;
+      const now = Date.now();
+      const rows = this.rows("rate_limits");
+      let row = rows.find((r) => r.key === key);
+      if (!row || new Date(String(row.window_start)).getTime() < now - windowMs) {
+        if (!row) {
+          row = { key, window_start: new Date(now).toISOString(), count: 0, _seq: ++seq };
+          rows.push(row);
+        }
+        row.window_start = new Date(now).toISOString();
+        row.count = 0;
+      }
+      row.count = Number(row.count) + 1;
+      return { data: Number(row.count) <= Number(args.p_max), error: null };
+    }
     if (fn !== "match_freelancers")
       return { data: null, error: { code: "42883", message: `no fn ${fn}` } };
     const q = args.query_embedding as number[];

@@ -7,6 +7,7 @@ import {
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 
 import { assessBrief } from "./assessor";
+import { rateLabel } from "./data";
 import { extractBrief } from "./extractor";
 import { getChatModel } from "./llm";
 import { findBestMatch } from "./matcher";
@@ -268,7 +269,7 @@ Freelancer:
 - Role: ${f.role}
 - Bio: ${f.bio}
 - Portfolio: ${f.portfolio_summary}
-- Rate: $${f.rate_usd_per_hour}/hr
+- Rate: ${rateLabel(f.rate_usd_per_hour)}
 - Timezone: ${f.timezone}
 - Skills: ${f.skills.join(", ")}
 

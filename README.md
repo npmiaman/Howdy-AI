@@ -68,12 +68,21 @@ scripts/                                      ← CLI helpers (seed, application
 
 **7. Silent sign-ups** get one nudge 48 hours after the welcome email (only sign-ups from the last 14 days).
 
+**8. Human takeover.** Every email Howdy sends carries the AgentMail label `howdy-auto`. If someone on the team replies by hand (Momo, the AgentMail console), that outbound message has no label — Howdy notices on the next inbound email, pauses the conversation, and alerts the team instead of replying. Client-facing saga email on a paused conversation is held and forwarded to the team. Alerts carry signed one-click links to take a conversation over or hand it back (`/api/howdy/takeover`).
+
+**9. Opt-outs.** Invites and nudges end with "Reply STOP". A STOP reply suppresses the sender (`email_suppressions`) and the saga mailer never emails them again; writing in with a real message opts back in.
+
+**10. Billing (phase 1).** The shortlist email states the pricing as the website does; every intro that goes out is recorded in `billable_intros` ($50, `HOWDY_MATCH_FEE_USD`). Invoicing is manual: `npm run billing list` / `invoiced <id>`.
+
+**11. Daily digest.** Each morning (first cron run after 01:00 UTC) the team gets yesterday's funnel, conversations waiting on a human, requests stuck past 20h, what's owed, and AI budget used.
+
 ### Safety switches
 
 - **`HOWDY_OUTREACH_DRYRUN`** (default on): every saga email — invites, shortlists, intros, check-ins, status replies, nudges — is logged, not sent, unless this is exactly `false`. Intake replies (clarifying questions, the "on it" ack, acknowledgements to freelancers writing in) always send.
 - **`HOWDY_DRYRUN_ALLOWLIST`**: while dry-run is on, emails whose recipients are all on this list really go out — run the full flow on your own addresses without touching real freelancers.
 - **Idempotency**: every step that sends email first claims its state change with a conditional update, so overlapping cron runs and webhook retries can't double-invite or double-send. Claims expire after 10 minutes, so a run killed mid-step is picked up by the next one. Duplicate webhook deliveries are skipped.
 - **Time limits**: model calls retry at most once, and the webhook alerts ops if handling passes 50s, instead of being killed silently at Vercel's 60s limit.
+- **Rate limits and AI budget** (`rate-limit.ts`, Postgres counters): chat 20 messages/session/day and 60/IP/hour; forms 5/IP/hour; inbound email 20/sender/hour; `HOWDY_DAILY_AI_TURNS` (default 500) AI turns per day, after which the chat says it's busy and inbound mail goes to the team.
 
 ## Local setup
 
@@ -103,6 +112,8 @@ The fakes answer structured LLM calls with keyword heuristics (validated against
 | `npm run seed:supabase` | Embed + push the seeded freelancers |
 | `npm run import:freelancers` | Import freelancers from a CSV |
 | `npm run applications -- list \| approve <id> \| reject <id>` | Review roster applications |
+| `npm run billing -- list \| invoiced <id>` | Billable intros not yet invoiced |
+| `npm run eval:matching` | Score the ranker against real hand-made shortlists (`research/eval/answer-key.json`) |
 | `npm run backup:db` / `mirror:backfill` | Local DB backup / backfill the mirror DB |
 | `npm run howdy` / `howdy:smoke` / `howdy:multi` | Talk to the agent locally |
 | `npm run howdy:reply-check` | Live check of the reply classifier against real Gemini |
@@ -112,8 +123,8 @@ The fakes answer structured LLM calls with keyword heuristics (validated against
 
 In this order:
 
-1. **Run migration `0006`** in Supabase. The cron refuses to run without it.
-2. **Fix the model setup.** On 2026-09-29 `gemini-flash-latest` resolved to `gemini-3.8-flash`, which took 17–55s per call, returned 503s under load, and the key hit its quota (429). A client turn makes 2–3 calls inside a 60s function. Pin `GEMINI_CHAT_MODEL` to a faster model (try a `flash-lite`, or set `GEMINI_THINKING_LEVEL=LOW`), check billing/quota, then run `npm run howdy:reply-check`.
+1. **Run migrations `0006` and `0007`** in Supabase. The cron refuses to run without them. `0007` pauses every existing conversation (they're all hand-handled today).
+2. **Gemini:** production pins `GEMINI_CHAT_MODEL=gemini-3.5-flash-lite` (≈1s per call vs 17–62s for `gemini-flash-latest`, 11/12 on the reply check). The key is on the **free tier (10 requests/min per model)** — enable billing before real traffic.
 3. **Set env vars on Vercel** (see `.env.local.example`), including `AGENTMAIL_WEBHOOK_SECRET` — the webhook's `whsec_…` signing secret from AgentMail (`webhooks.get(<id>).secret`). In production the webhook rejects every request until it's set.
 4. **Deploy** (merge to `main`).
 5. **Scheduler**: something must call `GET /api/howdy/process-pending` with `Authorization: Bearer $CRON_SECRET` every ~15 minutes. The GitHub Actions workflow does this, but GitHub disables scheduled workflows after 60 days without commits — an external scheduler (e.g. cron-job.org) or Vercel Pro cron is more durable. Use one scheduler.

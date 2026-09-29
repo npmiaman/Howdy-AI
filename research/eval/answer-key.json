@@ -1,0 +1,47 @@
+{
+  "about": "Real briefs with the freelancers a human (Bernice) actually picked by hand. The ranker is scored on whether it ranks those people highly. Tiny on purpose — add every new hand-made shortlist here. Picks with freelancer_id null are people who aren't on the roster (a supply gap no ranking change can fix).",
+  "briefs": [
+    {
+      "id": "liu-birdsnest-video-2026-07",
+      "source": "Thread with lxinyu033@gmail.com, client brief 2026-06-29, Bernice's shortlist 2026-07-08",
+      "brief": {
+        "role": "Video Editor",
+        "description": "Create videos for a bird's nest business; should be able to show product videos they've produced before.",
+        "stack_or_tools": null,
+        "budget_usd_per_hour_max": null,
+        "timezone_preference": null,
+        "deadline": null,
+        "must_haves": ["has produced product videos before"],
+        "references": null,
+        "domain": "food and beverage (bird's nest products)",
+        "experience_level": "junior",
+        "red_flags": null,
+        "collaboration_style": null
+      },
+      "human_picks": [
+        { "name": "Joy", "freelancer_id": "joy" },
+        { "name": "Eudale", "freelancer_id": null, "note": "not on the roster (gmeudale.wixstudio.com)" },
+        { "name": "Iris Helena", "freelancer_id": null, "note": "not on the roster (behance.net/irishelena)" }
+      ]
+    },
+    {
+      "id": "julian-logo-signage-2026-06",
+      "source": "Thread with julian@ernestandkin.media, brief 2026-06-24, Bernice's pick the same day, references sent 2026-06-25",
+      "brief": {
+        "role": "Graphic Designer",
+        "description": "Design a logo and signage.",
+        "stack_or_tools": null,
+        "budget_usd_per_hour_max": null,
+        "timezone_preference": null,
+        "deadline": null,
+        "must_haves": null,
+        "references": ["futuristic AI icon", "data-flow technology concept imagery"],
+        "domain": "technology / AI",
+        "experience_level": null,
+        "red_flags": null,
+        "collaboration_style": null
+      },
+      "human_picks": [{ "name": "Fateen Wardina", "freelancer_id": "fateen-wardina" }]
+    }
+  ]
+}

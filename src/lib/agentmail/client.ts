@@ -213,6 +213,31 @@ function stripHtml(html: string): string {
 }
 
 /**
+ * Label on every email Howdy's code sends. AgentMail marks all outbound mail
+ * `sent`, so an outbound message *without* this label was sent by a person
+ * (from Momo or the AgentMail console) — that's how takeover is detected.
+ */
+export const HOWDY_AUTO_LABEL = "howdy-auto";
+
+/**
+ * Has a person — not Howdy's code — sent a message on this provider thread
+ * since `since`? (Mail from before the label existed can't be told apart, so
+ * it's ignored; conversations from then were paused by migration 0007.)
+ */
+export async function threadHasHumanReply(threadId: string, since: Date): Promise<boolean> {
+  const am = getClient();
+  const inboxId = await getInboxId();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const thread = (await am.inboxes.threads.get(inboxId, threadId)) as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return ((thread?.messages ?? []) as any[]).some((m) => {
+    const labels: string[] = m.labels ?? [];
+    const at = new Date(m.timestamp ?? m.createdAt ?? m.created_at ?? 0);
+    return labels.includes("sent") && !labels.includes(HOWDY_AUTO_LABEL) && at >= since;
+  });
+}
+
+/**
  * Reply to a specific inbound message (preserves the thread).
  */
 export async function replyToMessage(args: {
@@ -224,7 +249,7 @@ export async function replyToMessage(args: {
   const result = await am.inboxes.messages.reply(
     inboxId,
     args.messageId,
-    { text: args.text },
+    { text: args.text, labels: [HOWDY_AUTO_LABEL] },
   );
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const r = result as any;
@@ -251,6 +276,7 @@ export async function sendFreshEmail(args: {
     ...(args.cc && args.cc.length ? { cc: args.cc } : {}),
     subject: args.subject,
     text: args.text,
+    labels: [HOWDY_AUTO_LABEL],
   });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const r = result as any;

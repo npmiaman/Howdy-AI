@@ -36,14 +36,15 @@ import {
   markThreadProcessed,
   saveBrief,
 } from "@/lib/howdy/threads";
+import { hitRateLimit, LIMITS, spendAiTurn } from "@/lib/howdy/rate-limit";
+import { isStopRequest, suppress, suppressedAmong, unsuppress } from "@/lib/howdy/suppression";
+import { humanIsHandling, takeoverLink } from "@/lib/howdy/takeover";
 import { verifyWebhook } from "@/lib/howdy/webhook-auth";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
-import { errorMessage, firstName } from "@/lib/utils";
+import { errorMessage, firstName, SITE_URL } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.bridgecreatives.co";
 
 function ok(action: string, extra: Record<string, unknown> = {}) {
   return NextResponse.json({ ok: true, action, ...extra });
@@ -98,6 +99,34 @@ async function recordInbound(email: AgentMailIncomingMessage) {
     gmailMessageId: email.messageId,
   });
   return thread;
+}
+
+/**
+ * If a person on the team is handling this conversation, Howdy stays out:
+ * the team gets a "reply needed" alert (with a hand-back link) instead.
+ */
+async function handledByHuman(
+  email: AgentMailIncomingMessage,
+  threadId: string,
+): Promise<NextResponse | null> {
+  if (!(await humanIsHandling({ threadId, providerThreadId: email.threadId }))) return null;
+  await alertOps(
+    email,
+    "🙋 Reply needed — you're handling this conversation",
+    `Howdy didn't reply because someone on the team is handling this conversation. To hand it back: ${takeoverLink(threadId, "auto")}`,
+  );
+  return ok("human_handled");
+}
+
+/** Spend an AI turn; when today's budget is gone, pass the email to the team. */
+async function outOfBudget(email: AgentMailIncomingMessage): Promise<NextResponse | null> {
+  if (await spendAiTurn()) return null;
+  await alertOps(
+    email,
+    "⛽ Reply needed — Howdy is out of AI budget today",
+    "Howdy didn't reply because today's AI budget (HOWDY_DAILY_AI_TURNS) is used up.",
+  );
+  return ok("ai_budget_exhausted");
 }
 
 /** Reply in the conversation and record the reply on it. */
@@ -178,6 +207,14 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
       return ok(verdict);
     }
 
+    // One sender flooding the inbox can't run up AI calls or replies.
+    if (!(await hitRateLimit(`inbound:${email.fromEmail.toLowerCase()}`, LIMITS.inboundPerSender()))) {
+      const hour = new Date().toISOString().slice(0, 13);
+      if (await hitRateLimit(`alert:flood:${email.fromEmail.toLowerCase()}:${hour}`, { max: 1, window: 3600 }))
+        await alertOps(email, "🚧 Howdy is rate-limiting a sender", "This sender went over the hourly limit; Howdy is ignoring their mail for now.");
+      return ok("rate_limited");
+    }
+
     // ------------------------------------------------------------------
     // Who is this? Matched by provider thread first, then by the reply
     // headers (In-Reply-To / References) — never by subject line.
@@ -199,19 +236,44 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
       applied ||
       rosterIds.length > 0 ||
       checkin?.party === "freelancer";
+    // ------------------------------------------------------------------
+    // Opt-outs: a STOP reply means no more email (and, from a freelancer,
+    // no to the invite). Anyone else who opted out and writes in again is
+    // opting back in.
+    // ------------------------------------------------------------------
+    if (isStopRequest(email.body)) {
+      await recordInbound(email);
+      await suppress(email.fromEmail, "replied STOP");
+      if (candidate) {
+        const request = await getPendingById(candidate.requestId);
+        if (request) await handleFreelancerDecision({ candidate, accepted: false, request });
+      }
+      await replyToMessage({
+        messageId: email.messageId,
+        text: "Done — you won't get any more emails from Howdy. If that was a mistake, just reply and I'll pick things back up.",
+      });
+      return ok("unsubscribed");
+    }
+    if ((await suppressedAmong([email.fromEmail])).length > 0) await unsuppress(email.fromEmail);
 
-    await maybeNotifyInbound({
-      fromEmail: email.fromEmail,
-      subject: email.subject,
-      body: email.body,
-      senderType: freelancerish ? "freelancer" : "client",
-    });
+    // The "1 new message" alert, sent once Howdy knows it's handling the email.
+    const notify = (note?: string) =>
+      maybeNotifyInbound({
+        fromEmail: email.fromEmail,
+        subject: email.subject,
+        body: email.body,
+        senderType: freelancerish ? "freelancer" : "client",
+        note,
+      });
 
     // ------------------------------------------------------------------
     // ROUTE 1 — a FREELANCER replying to an invite (or after being picked).
     // ------------------------------------------------------------------
     if (candidate) {
       const thread = await recordInbound(email);
+      const held = (await handledByHuman(email, thread.id)) ?? (await outOfBudget(email));
+      if (held) return held;
+      await notify();
       const request = await getPendingById(candidate.requestId);
       if (!request) return ok("freelancer_orphaned");
       const decision = await classifyFreelancerReply(email.body);
@@ -238,7 +300,10 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
     // ROUTE 2 — a reply to a post-match CHECK-IN ("how was the call?").
     // ------------------------------------------------------------------
     if (checkin) {
-      await recordInbound(email);
+      const thread = await recordInbound(email);
+      const held = (await handledByHuman(email, thread.id)) ?? (await outOfBudget(email));
+      if (held) return held;
+      await notify();
       const result = await handleCheckinReply({ checkin, text: email.body });
       return ok("checkin_reply", { stage: result.stage });
     }
@@ -249,6 +314,7 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
     const hi = firstName(email.fromName) ? ` ${firstName(email.fromName)}` : "";
     if (joinRequest) {
       await recordInbound(email);
+      await notify();
       await replyToMessage({
         messageId: email.messageId,
         text: [
@@ -263,6 +329,9 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
     }
     if (applied || rosterIds.length > 0) {
       const thread = await recordInbound(email);
+      const held = await handledByHuman(email, thread.id);
+      if (held) return held;
+      await notify();
       await replyAndRecord(
         email,
         thread.id,
@@ -278,6 +347,9 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
     // by where that request actually is; otherwise it's the brief conversation.
     // ------------------------------------------------------------------
     const thread = await recordInbound(email);
+    const held = (await handledByHuman(email, thread.id)) ?? (await outOfBudget(email));
+    if (held) return held;
+    await notify(`Take this conversation over from Howdy: ${takeoverLink(thread.id, "human")}`);
     const [history, memories, request] = await Promise.all([
       loadMessages(thread.id),
       loadMemories(email.fromEmail),

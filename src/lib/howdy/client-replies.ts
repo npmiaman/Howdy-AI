@@ -19,7 +19,7 @@ import {
 import { z } from "zod";
 
 import { listCandidates } from "./candidates";
-import { getFreelancerMap } from "./data";
+import { getFreelancerMap, rateLabel } from "./data";
 import { extractBrief } from "./extractor";
 import { howdyAddresses } from "./inbound-guard";
 import { getChatModel } from "./llm";
@@ -82,7 +82,7 @@ const SITUATION: Record<string, string> = {
 function profile(f: Freelancer): string {
   return [
     `ID: ${f.id} — ${f.name} (${f.role})`,
-    `Rate: $${f.rate_usd_per_hour}/hr · Timezone: ${f.timezone} · Availability: ${f.availability_hours_per_week} hrs/week`,
+    `Rate: ${rateLabel(f.rate_usd_per_hour)} · Timezone: ${f.timezone} · Availability: ${f.availability_hours_per_week} hrs/week`,
     `Skills: ${f.skills.join(", ")}`,
     `Bio: ${f.bio}`,
     `Portfolio: ${f.portfolio_summary}`,
