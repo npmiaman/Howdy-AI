@@ -5,6 +5,14 @@
  */
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 
+/** Caller IP + user agent for a lead row. */
+export function requestMeta(request: Request): { ip: string | null; userAgent: string | null } {
+  return {
+    ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+    userAgent: request.headers.get("user-agent") ?? null,
+  };
+}
+
 export async function upsertLead(args: {
   fullName: string;
   company: string;

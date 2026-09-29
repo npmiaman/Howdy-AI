@@ -12,6 +12,8 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import type { ZodType } from "zod";
 
+import { FIELD_PRIORITY } from "@/lib/howdy/types";
+
 export type LlmCall = { name: string; system: string; human: string };
 type Handler = (call: LlmCall) => unknown;
 
@@ -87,20 +89,7 @@ export function heuristicBrief(human: string): Record<string, unknown> {
   };
 }
 
-const FIELD_ORDER = [
-  "description",
-  "role",
-  "deadline",
-  "budget_usd_per_hour_max",
-  "experience_level",
-  "domain",
-  "references",
-  "red_flags",
-  "collaboration_style",
-  "stack_or_tools",
-  "must_haves",
-  "timezone_preference",
-];
+const FIELD_ORDER = FIELD_PRIORITY.map((f) => f.key as string);
 
 function heuristicAssessment(human: string) {
   const brief = jsonAfter("Brief extracted so far:", human) ?? {};
@@ -185,15 +174,16 @@ export const DEFAULT_HANDLERS: Record<string, Handler> = {
     const text = lastReply(human, "Client reply:");
     const list = roster(human);
     const t = text.toLowerCase();
+    const none = { reason: null, reply: null };
     if (/\b(anyone else|someone else|other options|more options|none of (these|them)|not a fit)\b/.test(t))
-      return { intent: "more_options", chosen_freelancer_ids: [], reason: text.trim() };
+      return { ...none, intent: "more_options", chosen_freelancer_ids: [], reason: text.trim() };
     if (/\b(new project|another project|different project|also need)\b/.test(t))
-      return { intent: "new_project", chosen_freelancer_ids: [], reason: null };
+      return { ...none, intent: "new_project", chosen_freelancer_ids: [] };
     if (/\b(tell me more|what about|how much|portfolio|\?)/.test(t) && !/\b(let'?s go with|connect me)\b/.test(t))
-      return { intent: "question", chosen_freelancer_ids: picks(text, list), reason: null };
+      return { ...none, intent: "question", chosen_freelancer_ids: picks(text, list), reply: "[fake answer from profiles]" };
     const chosen = picks(text, list);
-    if (chosen.length) return { intent: "pick", chosen_freelancer_ids: chosen, reason: null };
-    return { intent: "other", chosen_freelancer_ids: [], reason: null };
+    if (chosen.length) return { ...none, intent: "pick", chosen_freelancer_ids: chosen };
+    return { ...none, intent: "other", chosen_freelancer_ids: [], reply: "[fake small talk]" };
   },
 };
 

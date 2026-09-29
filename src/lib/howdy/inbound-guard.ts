@@ -5,6 +5,7 @@
  * only CC'd on, and fed attachment-only emails to the agent as empty text.
  */
 import type { AgentMailIncomingMessage } from "@/lib/agentmail/client";
+import { envList } from "@/lib/utils";
 
 export type InboundVerdict =
   | "process"
@@ -19,31 +20,24 @@ const AUTOMATED_SENDER =
 const AUTOMATED_SUBJECT =
   /^(delivery status notification|undeliver(able|ed)|mail delivery (failed|subsystem)|returned mail|auto(matic)?[- ]?reply|out of (the )?office)/i;
 
-function list(value: string | undefined, fallback: string): string[] {
-  return (value ?? fallback)
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-}
-
 /**
  * Every address that means "this email is to Howdy". (Deliberately not the
  * legacy HOWDY_INBOX_EMAIL from the removed Gmail integration — a stale value
  * there would make Howdy ignore a real person's mail as its own.)
  */
 export function howdyAddresses(): string[] {
-  return [...list(process.env.AGENTMAIL_INBOX_ID, ""), "howdyai@agentmail.to"].filter(
+  return [...envList(process.env.AGENTMAIL_INBOX_ID), "howdyai@agentmail.to"].filter(
     (a) => a.includes("@"),
   );
 }
 
 export function isTeamSender(email: string): boolean {
   const e = email.toLowerCase();
-  const domains = list(
+  const domains = envList(
     process.env.HOWDY_TEAM_DOMAINS,
     "bridgecreativesagency.com,bridgecreatives.co",
   );
-  const emails = list(process.env.HOWDY_TEAM_EMAILS, "");
+  const emails = envList(process.env.HOWDY_TEAM_EMAILS);
   return emails.includes(e) || domains.some((d) => e.endsWith(`@${d}`));
 }
 

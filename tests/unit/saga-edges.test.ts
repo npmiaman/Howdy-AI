@@ -211,5 +211,23 @@ describe("saga edges", () => {
     expect(res.status).toBe(504);
     expect(fakeMail.last(OPS)?.subject).toMatch(/ran out of time/i);
   });
+
+  it("a third yes while the 24h fallback is mid-send doesn't send a second shortlist", async () => {
+    process.env.HOWDY_OUTREACH_DRYRUN = "false";
+    roster(6);
+    await scheduled();
+    advance(3 * HOUR + MIN);
+    await runCron();
+    const [a, b, c] = invited();
+    for (const e of [a, b])
+      await postWebhook(fakeMail.inbound({ from: e, text: "Yes!", replyTo: fakeMail.last(e) }));
+    const { claimShortlist } = await import("@/lib/howdy/scheduler");
+    expect(await claimShortlist(String(table("pending_matches")[0].id))).toBe(true); // fallback in flight
+    const before = fakeMail.to(CLIENT).length;
+    const res = await postWebhook(fakeMail.inbound({ from: c, text: "Yes!", replyTo: fakeMail.last(c) }));
+    expect(res.body.action).toBe("freelancer_accepted");
+    expect(res.body.shortlistReady).toBe(false);
+    expect(fakeMail.to(CLIENT)).toHaveLength(before);
+  });
 });
 

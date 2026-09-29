@@ -7,6 +7,9 @@
  *   shortlist sent / after  → pick → connect · more options → rematch ·
  *                             question → answered from the profiles shown ·
  *                             new project → start a fresh email · other → short reply
+ *
+ * One LLM call classifies the reply and, for questions and small talk, writes
+ * the answer too — every round trip here is 17–55s against a 60s function.
  */
 import {
   type BaseMessage,
@@ -16,17 +19,16 @@ import {
 import { z } from "zod";
 
 import { listCandidates } from "./candidates";
-import { getFreelancersByIds } from "./data";
+import { getFreelancerMap } from "./data";
 import { extractBrief } from "./extractor";
+import { howdyAddresses } from "./inbound-guard";
 import { getChatModel } from "./llm";
 import { memoriesAsContext } from "./memories";
 import { handleClientSelection, startRematch, tellClient } from "./outreach";
-import { noMatchNotice } from "./outreach-content";
+import { rematchStartedNotice } from "./outreach-content";
 import { type PendingMatch, updateRequestBrief } from "./scheduler";
 import { saveBrief, type ThreadRow } from "./threads";
-import type { Brief, Freelancer, MatchCandidate } from "./types";
-
-const PROMISE_HOURS = 24;
+import { type Brief, type Freelancer, PROMISE_HOURS } from "./types";
 
 export type ClientReplyAction =
   | "status_update"
@@ -47,21 +49,24 @@ const ClientReplySchema = z.object({
     .string()
     .nullable()
     .describe("more_options: what they want different, in their words. Otherwise null."),
+  reply: z
+    .string()
+    .nullable()
+    .describe(
+      "question or other: your reply to the client, 1-3 short sentences, no greeting or signature. Otherwise null.",
+    ),
 });
 
-const CLIENT_REPLY_SYSTEM = `You read a client's email reply after Howdy sent them a shortlist of freelancers (or already introduced them to one). Classify what they want:
+const CLIENT_REPLY_SYSTEM = `You are Howdy, an AI talent scout. You read a client's email reply after you sent them a shortlist of freelancers (or already introduced them to one), classify what they want, and for some intents write the reply.
+
+Intents:
 - "pick": they want to be connected with one or more shortlisted freelancers (by name, "the first one", "#2", "both", "all three"). Put those IDs in chosen_freelancer_ids.
 - "more_options": they want different or additional people ("anyone else?", "none of these", "not quite right"). Put what they want different, in their words, in reason.
-- "question": they're asking about one or more of the freelancers (rate, portfolio, availability, experience). Put the IDs it's about in chosen_freelancer_ids (empty if unclear).
+- "question": they're asking about one or more of the freelancers (rate, portfolio, availability, experience). Put the IDs it's about in chosen_freelancer_ids, and answer in reply using ONLY the profiles given — if the answer isn't there, say plainly you don't have that detail and suggest they ask the freelancer directly once connected. Never promise to find out.
 - "new_project": they want to hire for a separate, different role or project.
-- "other": thanks, small talk, or anything else.
+- "other": thanks, small talk, or anything else. Write a short, warm reply that promises nothing beyond the situation note.
+
 Only use IDs from the shortlist. Return JSON matching the schema.`;
-
-const STATUS_SYSTEM = `You are Howdy, an AI talent scout. The client just replied while you're still recruiting freelancers for their brief — no shortlist has been sent yet. Write ONE or two short sentences that acknowledge anything new they said (it's been added to their brief) and tell them their shortlist will reach them within the number of hours given. Never name a freelancer or claim anyone has confirmed. No greeting or signature.`;
-
-const QUESTION_SYSTEM = `You are Howdy, answering a client's question about freelancers you put in front of them. Use ONLY the profiles provided. If the answer isn't in them, say plainly you don't have that detail and suggest they ask the freelancer directly once connected — never promise to find out. Two or three short sentences. No greeting or signature.`;
-
-const OTHER_SYSTEM = `You are Howdy, an AI talent scout. Write ONE short, warm reply to the client's latest message. Do not promise any action beyond what the situation note says. No greeting or signature.`;
 
 const SITUATION: Record<string, string> = {
   shortlist_sent:
@@ -72,21 +77,6 @@ const SITUATION: Record<string, string> = {
   connected:
     "They've been introduced. They can reply here any time if something comes up or they'd like someone else.",
 };
-
-function inboxAddress(): string {
-  const id = process.env.AGENTMAIL_INBOX_ID ?? "";
-  return id.includes("@") ? id : "howdyai@agentmail.to";
-}
-
-async function write(system: string, human: string): Promise<string> {
-  const reply = await getChatModel().invoke([
-    new SystemMessage(system),
-    new HumanMessage(human),
-  ]);
-  return (
-    typeof reply.content === "string" ? reply.content : JSON.stringify(reply.content)
-  ).trim();
-}
 
 function profile(f: Freelancer): string {
   return [
@@ -107,33 +97,31 @@ export async function handleClientReply(args: {
   inboundMessageId: string;
 }): Promise<{ action: ClientReplyAction }> {
   const { request, text, inboundMessageId } = args;
-  const reply = (kind: string, body: string) =>
-    tellClient(request, kind, body, inboundMessageId);
+  const reply = (kind: string, body: string) => tellClient(request, kind, body, inboundMessageId);
 
   // Still recruiting: never talk as if a match was sent. Keep the brief current
   // so refills and the 24h fallback rank on what they just added.
   if (request.phase === "matching" || request.phase === "outreach") {
-    const brief = await refreshBrief(args);
-    await updateRequestBrief(request.id, brief);
+    await refreshBrief(args, request.id);
     const elapsed = (Date.now() - request.createdAt.getTime()) / 3_600_000;
     const hours = Math.max(1, Math.ceil(PROMISE_HOURS - elapsed));
-    const body = await write(
-      STATUS_SYSTEM,
-      `Brief:\n${JSON.stringify(brief, null, 2)}\n\nHours until the shortlist: ${hours}\n\nClient's message:\n${text}`,
+    await reply(
+      "client_status_update",
+      `Got it — I've added that to your brief. I'm still lining people up, and your shortlist will reach you within ${hours} hour${hours === 1 ? "" : "s"}.`,
     );
-    await reply("client_status_update", body);
     return { action: "status_update" };
   }
 
-  const candidates = await listCandidates(request.id);
-  const shown = candidates
+  const shown = (await listCandidates(request.id))
     .filter((c) => c.shownToClientAt)
     .sort((a, b) => a.rank - b.rank);
-  const freelancers = new Map(
-    (await getFreelancersByIds(shown.map((c) => c.freelancerId))).map((f) => [f.id, f]),
-  );
+  const freelancers = await getFreelancerMap(shown.map((c) => c.freelancerId));
+  const profiles = shown.flatMap((c) => {
+    const f = freelancers.get(c.freelancerId);
+    return f ? [profile(f)] : [];
+  });
 
-  const intent = await classifyClientReply(text, shown, freelancers);
+  const intent = await classifyClientReply({ text, profiles, phase: request.phase });
   const shownIds = new Set(shown.map((c) => c.freelancerId));
   const ids = intent.chosen_freelancer_ids.filter((id) => shownIds.has(id));
 
@@ -148,82 +136,62 @@ export async function handleClientReply(args: {
 
   if (intent.intent === "more_options") {
     const brief = await refreshBrief(args);
-    const { started } = await startRematch({
-      request,
-      excludeFreelancerIds: [...shownIds],
-      reason: intent.reason ?? text,
-      brief,
-    });
-    await reply(
-      "client_more_options",
-      started
-        ? `On it — I'll line up fresh people (nobody from this shortlist) and send them over within ${PROMISE_HOURS} hours.`
-        : noMatchNotice(brief.role),
-    );
+    await startRematch({ request, reason: intent.reason ?? text, brief });
+    await reply("client_more_options", rematchStartedNotice());
     return { action: "client_more_options" };
-  }
-
-  if (intent.intent === "question") {
-    const about = ids.length ? ids : [...shownIds];
-    const profiles = about
-      .map((id) => freelancers.get(id))
-      .filter((f): f is Freelancer => !!f)
-      .map(profile)
-      .join("\n\n");
-    const body = await write(
-      QUESTION_SYSTEM,
-      `Profiles:\n${profiles || "(none)"}\n\nClient's question:\n${text}`,
-    );
-    await reply("client_question", body);
-    return { action: "client_question" };
   }
 
   if (intent.intent === "new_project") {
     await reply(
       "client_new_project",
-      `Love it. Start a new email to ${inboxAddress()} with a subject line for the new role and I'll scout that one separately — this thread stays focused on your ${request.brief.role ?? "current"} search.`,
+      `Love it. Start a new email to ${howdyAddresses()[0]} with a subject line for the new role and I'll scout that one separately — this thread stays focused on your ${request.brief.role ?? "current"} search.`,
     );
     return { action: "client_new_project" };
   }
 
-  const body = await write(
-    OTHER_SYSTEM,
-    `Situation: ${SITUATION[request.phase] ?? SITUATION.connected}\n\nClient's message:\n${text}`,
+  const isQuestion = intent.intent === "question";
+  await reply(
+    isQuestion ? "client_question" : "client_other",
+    intent.reply?.trim() ||
+      (isQuestion
+        ? "I don't have that detail on hand — best to ask them directly once you're connected."
+        : "Thanks! Reply here any time."),
   );
-  await reply("client_other", body);
-  return { action: "client_other" };
+  return { action: isQuestion ? "client_question" : "client_other" };
 }
 
-export async function classifyClientReply(
-  text: string,
-  shown: MatchCandidate[],
-  freelancers: Map<string, Freelancer>,
-): Promise<z.infer<typeof ClientReplySchema>> {
-  const roster = shown
-    .map((c) => freelancers.get(c.freelancerId))
-    .filter((f): f is Freelancer => !!f)
-    .map((f) => `ID: ${f.id} — ${f.name} (${f.role})`)
-    .join("\n");
+export async function classifyClientReply(args: {
+  text: string;
+  profiles: string[];
+  phase: string;
+}): Promise<z.infer<typeof ClientReplySchema>> {
   const llm = getChatModel().withStructuredOutput(ClientReplySchema, {
     name: "client_reply",
   });
   return llm.invoke([
     new SystemMessage(CLIENT_REPLY_SYSTEM),
-    new HumanMessage(`Shortlist:\n${roster || "(none)"}\n\nClient reply:\n${text}\n\nClassify it.`),
+    new HumanMessage(
+      `Situation: ${SITUATION[args.phase] ?? SITUATION.connected}\n\nShortlist (full profiles):\n${args.profiles.join("\n\n") || "(none)"}\n\nClient reply:\n${args.text}\n\nClassify it.`,
+    ),
   ]);
 }
 
-/** Re-extract the brief from the whole conversation and persist it. */
-async function refreshBrief(args: {
-  thread: ThreadRow;
-  history: BaseMessage[];
-  memories: string[];
-}): Promise<Brief> {
+/**
+ * Re-extract the brief from the whole conversation and persist it (on the
+ * thread, and on the request when given).
+ */
+async function refreshBrief(
+  args: { thread: ThreadRow; history: BaseMessage[]; memories: string[] },
+  requestId?: string,
+): Promise<Brief> {
   const brief = await extractBrief(
     args.history,
     args.thread.brief,
     memoriesAsContext(args.memories),
   );
-  await saveBrief(args.thread.id, brief);
+  await Promise.all([
+    saveBrief(args.thread.id, brief),
+    requestId ? updateRequestBrief(requestId, brief) : null,
+  ]);
   return brief;
 }

@@ -2,20 +2,19 @@ import {
   AIMessage,
   type BaseMessage,
   HumanMessage,
-  SystemMessage,
 } from "@langchain/core/messages";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { assessBrief } from "@/lib/howdy/assessor";
 import { extractBrief } from "@/lib/howdy/extractor";
-import { getChatModel } from "@/lib/howdy/llm";
+import { generateText } from "@/lib/howdy/generate";
 import {
   appendMessageDeduped,
   findOrCreateThread,
   saveBrief,
 } from "@/lib/howdy/threads";
-import { EMPTY_BRIEF, type Brief } from "@/lib/howdy/types";
+import { EMPTY_BRIEF, type Brief, PROMISE_HOURS } from "@/lib/howdy/types";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 
 import { handOffToEmail, webThreadKey } from "./handoff";
@@ -165,7 +164,7 @@ Rules:
 // (which the widget answers with its inline form) is always there.
 function contactAsk(brief: Brief): string {
   const role = brief.role?.trim();
-  return `Love it — I've got what I need to start scouting${role ? ` your ${role}` : ""}. What's your name and the best email for your shortlist? It'll land within 24 hours.`;
+  return `Love it — I've got what I need to start scouting${role ? ` your ${role}` : ""}. What's your name and the best email for your shortlist? It'll land within ${PROMISE_HOURS} hours.`;
 }
 
 export async function POST(request: Request) {
@@ -233,10 +232,9 @@ export async function POST(request: Request) {
       text = assessment.nextQuestion.trim();
     } else {
       // Fallback: ask from the raw priority prompt if the assessor returned none.
-      const reply = await getChatModel().invoke([
-        new SystemMessage(CLARIFY_PROMPT),
-        new HumanMessage(
-          `Conversation so far:
+      text = await generateText(
+        CLARIFY_PROMPT,
+        `Conversation so far:
 ${lcMessages
   .map((m) => `${m.getType() === "human" ? "Hirer" : "Howdy"}: ${m.content}`)
   .join("\n")}
@@ -245,12 +243,7 @@ Current brief (extracted):
 ${JSON.stringify(brief, null, 2)}
 
 Ask the single highest-priority unanswered question.`,
-        ),
-      ]);
-      text =
-        typeof reply.content === "string"
-          ? reply.content.trim()
-          : JSON.stringify(reply.content);
+      );
     }
   } catch (err) {
     // The agent failed, but the visitor's message is already cached (step 1).

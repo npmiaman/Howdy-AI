@@ -6,7 +6,7 @@ import {
   replyToMessage,
   sendFreshEmail,
 } from "@/lib/agentmail/client";
-import { upsertLead } from "@/lib/howdy/leads";
+import { requestMeta, upsertLead } from "@/lib/howdy/leads";
 import { saveMemories } from "@/lib/howdy/memories";
 import {
   appendMessage,
@@ -73,9 +73,7 @@ export async function POST(request: Request) {
   }
   const { fullName, company, position, email } = parsed.data;
 
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
-  const userAgent = request.headers.get("user-agent") ?? null;
+  const { ip, userAgent } = requestMeta(request);
 
   const { leadId, isReturning } = await upsertLead({
     fullName,

@@ -7,6 +7,7 @@
 import { randomBytes } from "node:crypto";
 
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
+import { errorMessage, sameEmail } from "@/lib/utils";
 
 import type { Freelancer } from "./types";
 
@@ -38,7 +39,6 @@ export type ApplicationInput = {
   timezone?: string | null;
   skills?: string[];
   bio?: string | null;
-  source?: string;
 };
 
 export type RecordResult =
@@ -47,20 +47,6 @@ export type RecordResult =
 
 // Roster defaults for a freshly approved freelancer — tune per person later.
 const DEFAULT_AVAILABILITY_HOURS = 20;
-
-function errMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  const m = (err as { message?: unknown } | null)?.message;
-  return typeof m === "string" ? m : String(err);
-}
-
-/**
- * Case-insensitive exact email match. `ilike` alone isn't exact — `_` is a
- * LIKE wildcard and valid in emails — so confirm each hit in JS.
- */
-function sameEmail(a: unknown, b: string): boolean {
-  return typeof a === "string" && a.trim().toLowerCase() === b.trim().toLowerCase();
-}
 
 async function findPendingByEmail(email: string): Promise<ApplicationRow | null> {
   const { data, error } = await getSupabaseAdmin()
@@ -93,7 +79,7 @@ export async function recordApplication(input: ApplicationInput): Promise<Record
     timezone: input.timezone || null,
     skills: input.skills ?? [],
     bio: input.bio || null,
-    source: input.source ?? "freelancers-page",
+    source: "freelancers-page",
   };
 
   try {
@@ -103,7 +89,7 @@ export async function recordApplication(input: ApplicationInput): Promise<Record
     // A failed lookup shouldn't cost us the application — worst case we
     // insert a duplicate pending row, which a reviewer can reject.
     const existing = await findPendingByEmail(email).catch((err) => {
-      console.warn("[applications] pending lookup failed:", errMessage(err));
+      console.warn("[applications] pending lookup failed:", errorMessage(err));
       return null;
     });
 
@@ -124,13 +110,24 @@ export async function recordApplication(input: ApplicationInput): Promise<Record
     if (error) throw error;
     return { stored: true, id: (data as { id: string }).id, updated: false };
   } catch (err) {
-    const detail = errMessage(err);
+    const detail = errorMessage(err);
     console.error(
       `[applications] could not store application (${detail}). Full payload:`,
       JSON.stringify(fields),
     );
     return { stored: false, error: detail };
   }
+}
+
+/** Has this email ever applied to the roster? False if the lookup fails. */
+export async function hasApplication(email: string): Promise<boolean> {
+  if (!isSupabaseConfigured() || !email) return false;
+  const { data, error } = await getSupabaseAdmin()
+    .from("freelancer_applications")
+    .select("email")
+    .ilike("email", email)
+    .limit(10);
+  return !error && (data ?? []).some((r: { email: string }) => sameEmail(r.email, email));
 }
 
 export async function listApplications(status?: ApplicationStatus): Promise<ApplicationRow[]> {
@@ -240,7 +237,7 @@ export async function approveApplication(
   if (updErr || !marked?.length) {
     throw new Error(
       `Added ${freelancer.id} to the roster, but couldn't mark application ${id} approved` +
-        (updErr ? ` (${errMessage(updErr)})` : " (it was reviewed concurrently)") +
+        (updErr ? ` (${errorMessage(updErr)})` : " (it was reviewed concurrently)") +
         ". Check both tables.",
     );
   }

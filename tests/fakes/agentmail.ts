@@ -24,6 +24,8 @@ type Known = {
   from: string;
   to: string[];
   cc: string[];
+  /** The References chain a reply to this message would carry. */
+  refs: string[];
 };
 
 export class FakeAgentMail {
@@ -62,6 +64,7 @@ export class FakeAgentMail {
       from: HOWDY_INBOX,
       to: rec.to,
       cc: rec.cc,
+      refs: [messageId],
     });
     return { messageId, threadId };
   }
@@ -91,7 +94,14 @@ export class FakeAgentMail {
       inReplyTo: args.messageId,
     };
     this.sent.push(rec);
-    this.known.set(messageId, { threadId: orig.threadId, subject, from: HOWDY_INBOX, to, cc });
+    this.known.set(messageId, {
+      threadId: orig.threadId,
+      subject,
+      from: HOWDY_INBOX,
+      to,
+      cc,
+      refs: [...orig.refs, messageId],
+    });
     return { messageId, threadId: orig.threadId };
   }
 
@@ -122,7 +132,15 @@ export class FakeAgentMail {
         : "Hello");
     const to = args.to ?? [HOWDY_INBOX];
     const cc = args.cc ?? [];
-    this.known.set(messageId, { threadId, subject, from: args.from, to, cc });
+    const parentRefs = args.replyTo ? (this.known.get(args.replyTo.messageId)?.refs ?? []) : [];
+    this.known.set(messageId, {
+      threadId,
+      subject,
+      from: args.from,
+      to,
+      cc,
+      refs: [...parentRefs, messageId],
+    });
     return {
       event_type: "message.received",
       event_id: `evt_${messageId}`,
@@ -134,6 +152,9 @@ export class FakeAgentMail {
         thread_id: threadId,
         message_id: messageId,
         subject,
+        ...(args.replyTo
+          ? { in_reply_to: args.replyTo.messageId, references: parentRefs }
+          : {}),
         text: args.text,
         extracted_text: args.extractedText === undefined ? args.text : args.extractedText,
         ...(args.html ? { html: args.html } : {}),

@@ -33,6 +33,13 @@ describe("parseInboundPayload", () => {
     expect(m.cc).toEqual(["other@x.com"]);
   });
 
+  it("reads In-Reply-To and References as the ids this message answers", () => {
+    const m = parseInboundPayload(
+      payload({ extracted_text: "yes", in_reply_to: "<b@x>", references: ["<a@x>", "<b@x>"] }),
+    );
+    expect(m.replyToIds).toEqual(["<b@x>", "<a@x>", "<b@x>"]);
+  });
+
   it("uses extracted_text when present", () => {
     expect(parseInboundPayload(payload({ extracted_text: "new bit", text: "new bit\n> old" })).body).toBe(
       "new bit",
@@ -74,9 +81,9 @@ describe("classifyInbound", () => {
     threadId: "t",
     fromEmail: "dana@client.co",
     fromName: null,
-    toEmail: "howdyai@agentmail.to",
     to: ["howdyai@agentmail.to"],
     cc: [],
+    replyToIds: [],
     subject: "Need an editor",
     body: "I need a video editor",
     receivedAt: new Date(),

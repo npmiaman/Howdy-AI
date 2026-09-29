@@ -10,10 +10,11 @@
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 
 import { listCandidates } from "./candidates";
-import { getFreelancersByIds } from "./data";
+import { getFreelancerMap, getFreelancersByIds } from "./data";
 import { dispatch } from "./mailer";
 import { notifyOps } from "./notify";
 import { startRematch } from "./outreach";
+import { rematchStartedNotice } from "./outreach-content";
 import {
   checkinEmail,
   classifyCallSentiment,
@@ -23,12 +24,12 @@ import {
   followupQuestion,
   rematchOffer,
 } from "./post-match-content";
-import { getPendingById, leaseCutoff, type PendingMatch } from "./scheduler";
+import { claimRow, leaseFree } from "./claims";
+import { getPendingById, type PendingMatch } from "./scheduler";
 import {
   type CheckinParty,
   type CheckinSentiment,
   type CheckinStatus,
-  type Freelancer,
   type PostMatchCheckin,
   CHECKIN_DELAY_DAYS,
   MAX_CHECKIN_ROUND,
@@ -99,7 +100,7 @@ export async function schedulePostMatchCheckins(
   );
   if (candidates.length === 0) return { scheduled: 0 };
 
-  const freelancers = await freelancerMap(candidates.map((c) => c.freelancerId));
+  const freelancers = await getFreelancerMap(candidates.map((c) => c.freelancerId));
   const when = new Date(
     Date.now() + CHECKIN_DELAY_DAYS * 24 * 60 * 60 * 1000,
   ).toISOString();
@@ -150,7 +151,7 @@ export async function sendDueCheckins(): Promise<{ sent: number }> {
     .from("post_match_checkins")
     .select("*")
     .eq("status", "scheduled")
-    .or(`sent_at.is.null,sent_at.lt.${leaseCutoff()}`)
+    .or(leaseFree("sent_at"))
     .lte("scheduled_at", new Date().toISOString());
   if (error) throw error;
   const due = (data ?? []).map(rowToCheckin);
@@ -158,14 +159,13 @@ export async function sendDueCheckins(): Promise<{ sent: number }> {
   let sent = 0;
   for (const ch of due) {
     // Claim before sending so overlapping cron runs send each check-in once.
-    const { data: claimed } = await sb
-      .from("post_match_checkins")
-      .update({ sent_at: new Date().toISOString() })
-      .eq("id", ch.id)
-      .eq("status", "scheduled")
-      .or(`sent_at.is.null,sent_at.lt.${leaseCutoff()}`)
-      .select("id");
-    if (!claimed?.length) continue;
+    const claimed = await claimRow(
+      "post_match_checkins",
+      ch.id,
+      { sent_at: new Date().toISOString() },
+      (q) => q.eq("status", "scheduled").or(leaseFree("sent_at")),
+    ).catch(() => false);
+    if (!claimed) continue;
     try {
       const counterpart = await counterpartName(ch);
       const text = await checkinEmail({
@@ -218,22 +218,17 @@ export async function findCheckinByThread(
 }
 
 /**
- * Fallback when a check-in reply arrives under a new provider thread id: an
- * open check-in to this sender, but only if the subject is a check-in reply —
- * so an unrelated new email from the same person is never swallowed here.
+ * Fallback when a check-in reply lands under a different provider thread id:
+ * match the email's In-Reply-To / References against check-ins we sent.
  */
-export async function findOpenCheckinBySender(args: {
-  email: string;
-  subject: string;
-}): Promise<PostMatchCheckin | null> {
-  if (!isSupabaseConfigured() || !args.email) return null;
-  if (!/how was the call|how'd the follow-up go|your call/i.test(args.subject))
-    return null;
-  const sb = getSupabaseAdmin();
-  const { data, error } = await sb
+export async function findCheckinByMessageIds(
+  messageIds: string[],
+): Promise<PostMatchCheckin | null> {
+  if (!isSupabaseConfigured() || messageIds.length === 0) return null;
+  const { data, error } = await getSupabaseAdmin()
     .from("post_match_checkins")
     .select("*")
-    .ilike("to_email", args.email)
+    .in("checkin_message_id", messageIds)
     .not("status", "in", "(done,scheduled)")
     .order("sent_at", { ascending: false })
     .limit(1);
@@ -350,14 +345,10 @@ export async function handleCheckinReply(args: {
       "do you want to be matched with someone else?",
     );
     if (yn === "yes") {
-      const started = await runRematch(ch);
-      await reply(
-        started
-          ? "On it — I'll line up someone who's a better fit and send you a fresh shortlist within 24 hours."
-          : "I've already been through everyone in my network who fits this brief. If you can loosen one thing — budget, timeline, or style — reply with it and I'll search again.",
-      );
+      await runRematch(ch);
+      await reply(rematchStartedNotice());
       await update(ch.id, { status: "done" });
-      return { stage: started ? "rematch_started" : "rematch_unavailable" };
+      return { stage: "rematch_started" };
     }
     const ack = await feedbackAck({ party: ch.party, sentiment: "bad" });
     await reply(ack);
@@ -414,24 +405,15 @@ async function scheduleRound2(ch: PostMatchCheckin): Promise<void> {
   );
 }
 
-async function runRematch(ch: PostMatchCheckin): Promise<boolean> {
+async function runRematch(ch: PostMatchCheckin): Promise<void> {
   const request = await getPendingById(ch.requestId);
-  if (!request) return false;
-  const candidates = await listCandidates(ch.requestId);
-  const disliked = candidates.find((c) => c.id === ch.candidateId);
-  const { started } = await startRematch({
+  if (!request) return;
+  // The freelancer it didn't work with is already "contacted" on this thread,
+  // so the rematch's outreach skips them along with everyone else tried.
+  await startRematch({
     request,
-    excludeFreelancerIds: disliked ? [disliked.freelancerId] : [],
     reason: ch.feedback ?? "previous match was not the right fit",
   });
-  return started;
-}
-
-async function freelancerMap(
-  ids: string[],
-): Promise<Map<string, Freelancer>> {
-  const list = await getFreelancersByIds([...new Set(ids)]);
-  return new Map(list.map((f) => [f.id, f]));
 }
 
 /** The other party's display name, for the check-in copy. */

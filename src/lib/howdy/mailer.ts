@@ -7,6 +7,9 @@
  * without emailing real freelancers or clients. See DECISIONS.md.
  */
 import { replyToMessage, sendFreshEmail } from "@/lib/agentmail/client";
+import { envList } from "@/lib/utils";
+
+import { appendMessage } from "./threads";
 
 export function isDryRun(): boolean {
   // Default ON — real email only when explicitly set to "false".
@@ -14,12 +17,7 @@ export function isDryRun(): boolean {
 }
 
 function allowlist(): Set<string> {
-  return new Set(
-    (process.env.HOWDY_DRYRUN_ALLOWLIST ?? "")
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean),
-  );
+  return new Set(envList(process.env.HOWDY_DRYRUN_ALLOWLIST));
 }
 
 /** Would an email to these recipients really go out right now? */
@@ -46,6 +44,8 @@ export async function dispatch(args: {
   text: string;
   replyToMessageId?: string | null;
   cc?: string[];
+  /** Record the email on this conversation once it has really gone out. */
+  threadId?: string | null;
 }): Promise<SendResult> {
   if (!wouldSend([args.to, ...(args.cc ?? [])])) {
     const id = `dry_${Math.random().toString(36).slice(2, 10)}`;
@@ -62,5 +62,12 @@ export async function dispatch(args: {
         text: args.text,
         cc: args.cc,
       });
+  if (args.threadId)
+    await appendMessage({
+      threadId: args.threadId,
+      role: "ai",
+      content: args.text,
+      gmailMessageId: sent.messageId,
+    });
   return { ...sent, delivered: true };
 }
