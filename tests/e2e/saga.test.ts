@@ -338,6 +338,23 @@ describe("concurrency", () => {
   });
 });
 
+describe("concurrency: simultaneous replies", () => {
+  it("two freelancers declining at the same moment never double-invite the next one", async () => {
+    live();
+    roster(8);
+    await briefToScheduled();
+    await startOutreach();
+    const [a, b] = invitedEmails();
+    await Promise.all([
+      freelancerSays(a, "No, sorry — booked"),
+      freelancerSays(b, "No thanks, not available"),
+    ]);
+    const counts = table("freelancers").map((f) => invitesTo(String(f.email)).length);
+    expect(counts.filter((n) => n > 1)).toHaveLength(0);
+    expect(invitedEmails()).toHaveLength(3); // pool topped back up to 3 outstanding
+  });
+});
+
 describe("dry-run is honest", () => {
   it("sends no saga email at all — including 'connecting you now'", async () => {
     roster(6);
