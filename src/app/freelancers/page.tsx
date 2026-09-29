@@ -4,12 +4,13 @@ import { ArrowUpRight, Check, ChevronDown, Sparkles, Star, X } from "lucide-reac
 
 import { ContactDialog } from "@/components/contact-dialog";
 import { EmailThread, type EmailMessage } from "@/components/email-thread";
+import {
+  FreelancerApplyButton,
+  FreelancerApplyDialog,
+} from "@/components/freelancer-apply-dialog";
 import { HomeChrome } from "@/components/home-chrome";
 import { SiteFooter } from "@/components/site-footer";
 import { CAT_ASCII, BLOB_ASCII } from "@/lib/ascii-art";
-
-const INVITE_MAILTO =
-  "mailto:howdyai@agentmail.to?subject=Request%20to%20join%20Howdy%27s%20freelancer%20roster";
 
 export const metadata: Metadata = {
   title: "Howdy: For Freelancers — An Invite-Only Roster",
@@ -37,6 +38,7 @@ export default function FreelancersPage() {
         <SiteFooter />
       </main>
       <ContactDialog />
+      <FreelancerApplyDialog />
     </div>
   );
 }
@@ -123,15 +125,14 @@ function HeroCard() {
         </p>
 
         <div className="mt-6 md:mt-8">
-          <a
-            href={INVITE_MAILTO}
-            className="flex h-11 items-center gap-1 rounded-full border border-white/30 bg-white/15 pl-5 pr-1 text-sm font-medium text-white shadow-[0_10px_36px_rgba(0,0,0,0.2)] backdrop-blur-md transition-colors hover:border-white/40 hover:bg-white/25 hover:text-white md:h-13 md:pl-7 md:text-base"
+          <FreelancerApplyButton
+            className="flex h-11 cursor-pointer items-center gap-1 rounded-full border border-white/30 bg-white/15 pl-5 pr-1 text-sm font-medium text-white shadow-[0_10px_36px_rgba(0,0,0,0.2)] backdrop-blur-md transition-colors hover:border-white/40 hover:bg-white/25 hover:text-white md:h-13 md:pl-7 md:text-base"
           >
             <span>Request an Invite</span>
             <span className="flex size-9 items-center justify-center rounded-full border border-white/25 bg-white/20 text-white backdrop-blur-md md:size-11">
               <ArrowUpRight className="size-4 md:size-5" />
             </span>
-          </a>
+          </FreelancerApplyButton>
         </div>
 
         <div className="mt-8 w-full max-w-2xl text-left md:mt-10">
@@ -344,12 +345,11 @@ function FinalCTA() {
       </p>
 
       <div className="mt-8 md:mt-10">
-        <a
-          href={INVITE_MAILTO}
-          className="inline-flex h-12 items-center justify-center rounded-full bg-zinc-950 px-8 text-sm font-medium text-white shadow-[0_8px_32px_rgba(0,0,0,0.18)] transition-colors hover:bg-zinc-800 md:h-14 md:px-10 md:text-base"
+        <FreelancerApplyButton
+          className="inline-flex h-12 cursor-pointer items-center justify-center rounded-full bg-zinc-950 px-8 text-sm font-medium text-white shadow-[0_8px_32px_rgba(0,0,0,0.18)] transition-colors hover:bg-zinc-800 md:h-14 md:px-10 md:text-base"
         >
           Request an Invite
-        </a>
+        </FreelancerApplyButton>
       </div>
     </section>
   );
@@ -358,11 +358,11 @@ function FinalCTA() {
 const FAQS = [
   {
     q: "How do freelancers actually get on the roster?",
-    a: "Mostly through scouting and referrals. We find people via past work, recommendations from existing roster freelancers, and conversations with companies who've already hired them. There's no public application form.",
+    a: "Mostly through scouting and referrals. We find people via past work, recommendations from existing roster freelancers, and conversations with companies who've already hired them. You can also request an invite, and a person reviews every one.",
   },
   {
     q: "Can I request an invite?",
-    a: "Yes. Send a short note to howdyai@agentmail.to with a portfolio link and the kind of work you love. We read every one, but we're keeping the network small, so we can't promise an invite.",
+    a: "Yes. Hit \"Request an Invite\" and share a portfolio link and the kind of work you love. We read every one, but we're keeping the network small, so we can't promise an invite.",
   },
   {
     q: "Why is it invite-only?",
