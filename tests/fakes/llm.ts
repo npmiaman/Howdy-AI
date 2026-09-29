@@ -179,7 +179,7 @@ export const DEFAULT_HANDLERS: Record<string, Handler> = {
       return { ...none, intent: "more_options", chosen_freelancer_ids: [], reason: text.trim() };
     if (/\b(new project|another project|different project|also need)\b/.test(t))
       return { ...none, intent: "new_project", chosen_freelancer_ids: [] };
-    if (/\b(tell me more|what about|how much|portfolio|\?)/.test(t) && !/\b(let'?s go with|connect me)\b/.test(t))
+    if (/\b(tell me more|what about|how much|portfolio|\?)/.test(t) && !/\b(let'?s go with|connect me|please)\b/.test(t))
       return { ...none, intent: "question", chosen_freelancer_ids: picks(text, list), reply: "[fake answer from profiles]" };
     const chosen = picks(text, list);
     if (chosen.length) return { ...none, intent: "pick", chosen_freelancer_ids: chosen };

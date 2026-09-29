@@ -66,6 +66,7 @@ Intents:
 - "new_project": they want to hire for a separate, different role or project.
 - "other": thanks, small talk, or anything else. Write a short, warm reply that promises nothing beyond the situation note.
 
+If they name someone to meet AND ask a question in the same reply, the intent is "pick" — acting on the choice matters more than the question.
 Only use IDs from the shortlist. Return JSON matching the schema.`;
 
 const SITUATION: Record<string, string> = {
