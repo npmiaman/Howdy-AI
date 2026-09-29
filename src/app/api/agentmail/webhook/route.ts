@@ -250,7 +250,7 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
       }
       await replyToMessage({
         messageId: email.messageId,
-        text: "Done — you won't get any more emails from Howdy. If that was a mistake, just reply and I'll pick things back up.",
+        text: "Done. You won't get any more emails from Howdy. If that was a mistake, just reply and I'll pick things back up.",
       });
       return ok("unsubscribed");
     }
@@ -282,7 +282,7 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
           kind: "freelancer_unclear",
           to: email.fromEmail,
           subject: email.subject,
-          text: "Just to confirm — are you open to this one? A quick yes or no works.",
+          text: "Just to confirm: are you open to this one? A quick yes or no works.",
           replyToMessageId: email.messageId,
           threadId: thread.id,
         });
@@ -320,7 +320,7 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
         text: [
           `Hey${hi}! Thanks for reaching out about joining Howdy's roster.`,
           "",
-          `We review every freelancer by hand. The fastest way in is the short application here: ${SITE_URL}/freelancers — it takes two minutes and goes straight to the team.`,
+          `We review every freelancer by hand. The fastest way in is the short application here: ${SITE_URL}/freelancers. It takes two minutes and goes straight to the team.`,
           "",
           "Howdy",
         ].join("\n"),
@@ -336,8 +336,8 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
         email,
         thread.id,
         applied
-          ? `Thanks${hi} — your application is with the team, and I've passed this note along too. If it's a fit, we'll email you.`
-          : `Thanks${hi} — noted. I've passed this along to the team.`,
+          ? `Thanks${hi}, your application is with the team, and I've passed this note along too. If it's a fit, we'll email you.`
+          : `Thanks${hi}, noted. I've passed this along to the team.`,
       );
       return ok(applied ? "freelancer_applicant" : "freelancer_inbound");
     }

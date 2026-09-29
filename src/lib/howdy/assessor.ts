@@ -3,6 +3,7 @@ import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
 import { getChatModel } from "./llm";
+import { HOWDY_VOICE } from "./voice";
 import {
   type Brief,
   type BriefAssessment,
@@ -67,7 +68,9 @@ Then:
   - If next_field is "missing": ask it fresh, grounded in their project.
 - Never re-ask a topic they've already answered clearly. Never ask about anything in the memory context.
 
-Return strict JSON matching the schema.`;
+Return strict JSON matching the schema.
+
+For next_question: ${HOWDY_VOICE}`;
 
 export async function assessBrief(
   messages: BaseMessage[],

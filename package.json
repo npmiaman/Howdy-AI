@@ -33,6 +33,7 @@
     "agentmail": "^0.5.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "humanizer": "github:brandonwise/humanizer#4b9b9bee384aea139f599133d2de1e1ceaee71a3",
     "lucide-react": "^1.14.0",
     "next": "16.2.4",
     "pg": "^8.22.0",

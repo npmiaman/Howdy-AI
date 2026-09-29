@@ -9,7 +9,7 @@ const SESSION = "sess-web-1";
 const EMAIL = "dana@client.co";
 const OPENING = {
   role: "assistant",
-  content: "Hey, I'm Howdy. Tell me what you're making and the creative you need — I'll start digging.",
+  content: "Hey, I'm Howdy. Tell me what you're making and the creative you need, and I'll start digging.",
 };
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -173,7 +173,7 @@ describe("website chat → email handoff", () => {
     expect(handoff.text).toContain("- Deadline: 2 weeks");
     expect(handoff.text).toContain("- Budget: up to $60/hr");
     expect(handoff.text).toContain(
-      "I'm on it — your shortlist lands in this thread within 24 hours. Reply here anytime to add details.",
+      "I'm on it. Your shortlist lands in this thread within 24 hours. Reply here anytime to add details.",
     );
     expect(handoff.text.trimEnd().endsWith("Howdy")).toBe(true);
 

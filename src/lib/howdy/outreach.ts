@@ -154,7 +154,7 @@ async function inviteCandidates(
         const sent = await dispatch({
           kind: "freelancer_invite",
           to: f.email,
-          subject: `Quick one — are you open to a ${brief.role ?? "creative"} gig?`,
+          subject: `Quick one: are you open to a ${brief.role ?? "creative"} gig?`,
           text: `${await freelancerPitch({ freelancer: f, brief })}\n\n${OPT_OUT_LINE}`,
         });
         await recordOutreach({
@@ -250,7 +250,7 @@ export async function handleFreelancerDecision(args: {
     await dispatch({
       kind: "freelancer_accept_ack",
       to: f.email,
-      subject: "Thanks — noted",
+      subject: "Thanks, noted",
       text: freelancerAcceptAck(f),
       replyToMessageId: candidate.outreachMessageId,
     });
@@ -547,7 +547,7 @@ async function sendConnectNotice(candidate: MatchCandidate, freelancer: Freelanc
   await dispatch({
     kind: "freelancer_connect_notice",
     to: freelancer.email,
-    subject: "Good news — connecting you",
+    subject: "Good news: connecting you",
     text: connectNotice(freelancer),
     replyToMessageId: candidate.outreachMessageId,
   });

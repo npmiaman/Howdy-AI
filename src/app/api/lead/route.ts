@@ -58,7 +58,7 @@ export async function POST(request: Request) {
   const { ip: callerIp } = requestMeta(request);
   if (callerIp && !(await hitRateLimit(`form:lead:${callerIp}`, LIMITS.formPerIp()))) {
     return NextResponse.json(
-      { ok: false, error: "rate_limited", message: "Too many submissions — try again in an hour." },
+      { ok: false, error: "rate_limited", message: "Too many submissions. Try again in an hour." },
       { status: 429 },
     );
   }

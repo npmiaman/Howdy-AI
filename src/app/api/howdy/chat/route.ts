@@ -166,7 +166,7 @@ Rules:
 // (which the widget answers with its inline form) is always there.
 function contactAsk(brief: Brief): string {
   const role = brief.role?.trim();
-  return `Love it — I've got what I need to start scouting${role ? ` your ${role}` : ""}. What's your name and the best email for your shortlist? It'll land within ${PROMISE_HOURS} hours.`;
+  return `Love it, I've got what I need to start scouting${role ? ` your ${role}` : ""}. What's your name and the best email for your shortlist? It'll land within ${PROMISE_HOURS} hours.`;
 }
 
 export async function POST(request: Request) {
@@ -214,7 +214,7 @@ export async function POST(request: Request) {
   }
   if (!(await spendAiTurn())) {
     return NextResponse.json(
-      { error: "I'm swamped right now — email howdyai@agentmail.to and I'll get back to you." },
+      { error: "I'm swamped right now. Email howdyai@agentmail.to and I'll get back to you." },
       { status: 429 },
     );
   }
@@ -277,7 +277,7 @@ Ask the single highest-priority unanswered question.`,
     return NextResponse.json(
       {
         reply:
-          "Sorry — I hit a snag on my end. Your message is saved; mind sending that again?",
+          "Sorry, I hit a snag on my end. Your message is saved, so mind sending that again?",
         done: false,
       },
       { status: 200 },

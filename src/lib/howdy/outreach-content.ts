@@ -107,7 +107,7 @@ export async function clientShortlistEmail(args: {
         brief: args.brief,
         rationale: p.rationale,
       });
-      return `${i + 1}. ${p.freelancer.name} — ${p.freelancer.role}, ${rateLabel(p.freelancer.rate_usd_per_hour)} (${p.freelancer.timezone})\n${note}`;
+      return `${i + 1}. ${p.freelancer.name}, ${p.freelancer.role} (${rateLabel(p.freelancer.rate_usd_per_hour)}, ${p.freelancer.timezone})\n${note}`;
     }),
   );
 
@@ -117,12 +117,12 @@ export async function clientShortlistEmail(args: {
     // Honest: strong matches, availability not yet confirmed.
     intro = `Here ${count === 1 ? "is" : "are"} the ${count === 1 ? "strongest match" : `top ${count} matches`} from our network for your brief. I'm confirming their availability now, but wanted to get ${count === 1 ? "them" : "these"} in front of you rather than keep you waiting:`;
   } else if (args.fewerThanTarget) {
-    intro = `Good news — I've lined up ${count} creative${count === 1 ? "" : "s"} who ${count === 1 ? "is" : "are"} confirmed available and keen. I'm still scouting for more, but didn't want to hold these up:`;
+    intro = `Good news: I've lined up ${count} creative${count === 1 ? "" : "s"} who ${count === 1 ? "is" : "are"} confirmed available and keen. I'm still scouting for more, but didn't want to hold these up:`;
   } else {
-    intro = `Good news — I've lined up 3 creatives who are confirmed available and genuinely keen on your project:`;
+    intro = `Good news: I've lined up 3 creatives who are confirmed available and genuinely keen on your project:`;
   }
 
-  const outro = `Reply with the name(s) you'd like to connect with — one or more is totally fine — and I'll make the intro.\n\n${pricingNote()}`;
+  const outro = `Reply with the name(s) you'd like to meet (one or more is fine) and I'll make the intro.\n\n${pricingNote()}`;
 
   return `${intro}\n\n${notes.join("\n\n")}\n\n${outro}`;
 }
@@ -153,24 +153,24 @@ Write the intro email.`,
 
 /** A freelancer said yes to an invite (still anonymized — no booking promised). */
 export function freelancerAcceptAck(freelancer: Freelancer): string {
-  return `Thanks ${firstName(freelancer.name)} — noted! If the client picks you, I'll be in touch to connect you directly.`;
+  return `Thanks ${firstName(freelancer.name)}, noted. If the client picks you, I'll connect you directly.`;
 }
 
 /** Heads-up to a confirmed freelancer that the client picked them. */
 export function connectNotice(freelancer: Freelancer): string {
-  return `Good news, ${firstName(freelancer.name)} — the client picked you! I'm sending an intro email to you both shortly.`;
+  return `Good news, ${firstName(freelancer.name)}: the client picked you. I'm sending an intro email to you both shortly.`;
 }
 
 /** Client picked a freelancer who hasn't confirmed yet: ask for their yes. */
 export function chosenNudge(freelancer: Freelancer): string {
   const first = firstName(freelancer.name);
-  return `Hey ${first} — good news: the client would love to work with you on this one. Still up for it? A quick yes and I'll make the intro.`;
+  return `Hey ${first}, good news: the client would love to work with you on this one. Still up for it? A quick yes and I'll make the intro.`;
 }
 
 /** A chosen freelancer turned it down after the client picked them. */
 export function chosenUnavailableNotice(freelancer: Freelancer): string {
   const first = firstName(freelancer.name);
-  return `Quick update — ${first} can't take this one on after all. Reply with another name from the shortlist, or say "anyone else" and I'll line up fresh people.`;
+  return `Quick update: ${first} can't take this one on after all. Reply with another name from the shortlist, or say "anyone else" and I'll line up fresh people.`;
 }
 
 /** The client's acknowledgement after they pick from the shortlist. */
@@ -183,7 +183,7 @@ export function selectionAck(args: {
   const parts: string[] = [];
   if (args.confirmed.length)
     parts.push(
-      `Perfect — connecting you with ${names(args.confirmed)} now. The intro will land in your inbox shortly.`,
+      `Perfect, connecting you with ${names(args.confirmed)} now. The intro will land in your inbox shortly.`,
     );
   if (args.pending.length)
     parts.push(
@@ -194,7 +194,7 @@ export function selectionAck(args: {
 
 /** A rematch search has been queued. */
 export function rematchStartedNotice(): string {
-  return `On it — I'll line up fresh people (nobody you've already seen) and send them over within ${PROMISE_HOURS} hours.`;
+  return `On it. I'll line up fresh people (nobody you've already seen) and send them over within ${PROMISE_HOURS} hours.`;
 }
 
 /** No one in the network fits (or everyone who does has been tried). */

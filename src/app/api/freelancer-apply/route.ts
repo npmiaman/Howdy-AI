@@ -133,7 +133,7 @@ function opsAlert(
     ...storage,
     `Confirmation email to applicant: ${confirmation}.`,
     "",
-    "— Howdy",
+    "Howdy",
   ].join("\n");
 
   return { subject, text };
@@ -143,7 +143,7 @@ export async function POST(request: Request) {
   const { ip: callerIp } = requestMeta(request);
   if (callerIp && !(await hitRateLimit(`form:apply:${callerIp}`, LIMITS.formPerIp()))) {
     return NextResponse.json(
-      { ok: false, error: "rate_limited", message: "Too many submissions — try again in an hour." },
+      { ok: false, error: "rate_limited", message: "Too many submissions. Try again in an hour." },
       { status: 429 },
     );
   }

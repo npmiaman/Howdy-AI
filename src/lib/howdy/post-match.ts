@@ -256,7 +256,7 @@ export async function handleCheckinReply(args: {
     const s = await classifyCallSentiment(text);
     if (s === "unclear") {
       await reply(
-        "Thanks for getting back — could you say a bit more about how it actually went?",
+        "Thanks for getting back to me. Could you say a bit more about how it actually went?",
       );
       return { stage: "sentiment_unclear" };
     }
@@ -364,7 +364,7 @@ export async function handleCheckinReply(args: {
     );
     if (yn === "yes" && ch.round < MAX_CHECKIN_ROUND) {
       await scheduleRound2(ch);
-      await reply("Love it — I'll check in after that one too.");
+      await reply("Love it. I'll check in after that one too.");
       await update(ch.id, { status: "done" });
       return { stage: "round2_scheduled" };
     }

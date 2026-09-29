@@ -34,7 +34,7 @@ export function webThreadKey(sessionKey: string): string {
 const NameSchema = z.string().trim().min(1).max(120);
 const EmailSchema = z.string().trim().email().max(200);
 
-const ALREADY_SENT_REPLY = `You're all set — your brief is already in your inbox, and your shortlist lands in that thread within ${PROMISE_HOURS} hours.`;
+const ALREADY_SENT_REPLY = `You're all set. Your brief is already in your inbox, and your shortlist lands in that thread within ${PROMISE_HOURS} hours.`;
 
 function fail(status: number, error: string) {
   return NextResponse.json({ error }, { status });
@@ -91,7 +91,7 @@ export function handoffEmail(firstName: string, brief: Brief): string {
     "",
     ...briefBullets(brief),
     "",
-    `I'm on it — your shortlist lands in this thread within ${PROMISE_HOURS} hours. Reply here anytime to add details.`,
+    `I'm on it. Your shortlist lands in this thread within ${PROMISE_HOURS} hours. Reply here anytime to add details.`,
     "",
     "Howdy",
   ].join("\n");
@@ -261,7 +261,7 @@ export async function handOffToEmail(args: {
   }
   const email = EmailSchema.safeParse(args.contact.email);
   if (!email.success) {
-    return fail(400, "That email doesn't look quite right — mind double-checking it?");
+    return fail(400, "That email doesn't look quite right. Mind double-checking it?");
   }
 
   if (!isSupabaseConfigured() || !isAgentMailConfigured()) {
@@ -275,7 +275,7 @@ export async function handOffToEmail(args: {
     const found = await withRetry(() => findWebThread(args.sessionKey), "findWebThread");
     // Nothing to hand off without a brief (e.g. a contact post on turn one).
     if (!found || !(found.brief?.role || found.brief?.description)) {
-      return fail(409, "Tell me a bit about what you need first — then I'll grab your email.");
+      return fail(409, "Tell me a bit about what you need first, then I'll grab your email.");
     }
     web = found;
     claimed = await claimHandoff(web.id);
@@ -307,7 +307,7 @@ export async function handOffToEmail(args: {
   } catch (e) {
     console.error("[howdy/chat] handoff email failed:", errorMessage(e));
     await releaseHandoff(web.id);
-    return fail(502, "I couldn't send the email just now — mind hitting send again?");
+    return fail(502, "I couldn't send the email just now. Mind hitting send again?");
   }
 
   // The email is out, so the claim is never released past this point.
@@ -321,7 +321,7 @@ export async function handOffToEmail(args: {
     sent,
   });
 
-  const reply = `You're all set, ${firstName}! I just emailed your brief to ${email.data} — check your inbox. Your shortlist lands in that thread within ${PROMISE_HOURS} hours.`;
+  const reply = `You're all set, ${firstName}! I just emailed your brief to ${email.data}, so check your inbox. Your shortlist lands in that thread within ${PROMISE_HOURS} hours.`;
   try {
     await withRetry(
       () => appendMessageDeduped({ threadId: web.id, role: "ai", content: reply }),
