@@ -49,3 +49,5 @@ howdy-*.png
 
 # Roster CSVs contain freelancer PII (emails, phones) — never commit
 supabase/migrations/*.csv
+.claude/worktrees/
+!.env.local.example

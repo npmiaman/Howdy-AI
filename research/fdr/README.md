@@ -12,6 +12,9 @@ the project owner.
 
 ## Files
 
+None of the four framing docs below has been written yet — only this README
+exists. They're the plan, not the contents.
+
 | File | What it answers |
 |---|---|
 | `PROBLEM.md` | What are we predicting, from what, when, why, and with what success criteria |
