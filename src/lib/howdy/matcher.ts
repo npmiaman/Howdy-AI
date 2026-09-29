@@ -3,32 +3,14 @@ import { z } from "zod";
 
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 
-import { freelancerToEmbeddingText, loadFreelancers, rateLabel } from "./data";
-import {
-  cosineSimilarity,
-  getChatModel,
-  getEmbeddingModel,
-} from "./llm";
+import { rateLabel } from "./data";
+import { getChatModel, getEmbeddingModel } from "./llm";
 import type {
   Brief,
   Freelancer,
   MatchResult,
   RankedMatch,
 } from "./types";
-
-let inMemoryEmbeddings: Map<string, number[]> | null = null;
-
-async function ensureInMemoryEmbeddings(): Promise<Map<string, number[]>> {
-  if (inMemoryEmbeddings) return inMemoryEmbeddings;
-  const embedModel = getEmbeddingModel();
-  const freelancers = loadFreelancers();
-  const texts = freelancers.map(freelancerToEmbeddingText);
-  const vectors = await embedModel.embedDocuments(texts);
-  inMemoryEmbeddings = new Map(
-    freelancers.map((f, i) => [f.id, vectors[i]]),
-  );
-  return inMemoryEmbeddings;
-}
 
 function briefToEmbeddingText(brief: Brief): string {
   const parts: string[] = [];
@@ -48,29 +30,6 @@ function briefToEmbeddingText(brief: Brief): string {
   if (brief.red_flags?.length)
     parts.push(`Avoid: ${brief.red_flags.join(", ")}.`);
   return parts.join(" ");
-}
-
-function applyHardFilters(
-  brief: Brief,
-  freelancers: Freelancer[],
-): Freelancer[] {
-  return freelancers.filter((f) => {
-    if (
-      brief.budget_usd_per_hour_max !== null &&
-      f.rate_usd_per_hour > brief.budget_usd_per_hour_max
-    ) {
-      return false;
-    }
-    if (brief.timezone_preference) {
-      const tzPref = brief.timezone_preference.toLowerCase();
-      const overlapMatch =
-        f.timezone_overlap_hours.some((tz) =>
-          tz.toLowerCase().includes(tzPref),
-        ) || f.timezone.toLowerCase().includes(tzPref);
-      if (!overlapMatch) return false;
-    }
-    return true;
-  });
 }
 
 type Candidate = { freelancer: Freelancer; score: number };
@@ -103,34 +62,13 @@ async function shortlistViaSupabase(
   );
 }
 
-async function shortlistViaJson(
-  brief: Brief,
-  briefVec: number[],
-  limit = 5,
-): Promise<Candidate[]> {
-  const all = loadFreelancers();
-  const filtered = applyHardFilters(brief, all);
-  if (filtered.length === 0) return [];
-  const embeddings = await ensureInMemoryEmbeddings();
-  return filtered
-    .map((f) => {
-      const vec = embeddings.get(f.id);
-      if (!vec) return null;
-      return { freelancer: f, score: cosineSimilarity(briefVec, vec) };
-    })
-    .filter((x): x is Candidate => x !== null)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
-}
-
+/** Vector shortlist from the live roster (budget / timezone filtered in SQL). */
 async function shortlist(
   brief: Brief,
   briefVec: number[],
   limit: number,
 ): Promise<Candidate[]> {
-  return isSupabaseConfigured()
-    ? shortlistViaSupabase(brief, briefVec, limit)
-    : shortlistViaJson(brief, briefVec, limit);
+  return isSupabaseConfigured() ? shortlistViaSupabase(brief, briefVec, limit) : [];
 }
 
 const RerankSchema = z.object({

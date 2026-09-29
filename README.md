@@ -27,7 +27,7 @@ src/
     └── supabase/                             ← Supabase admin client
 supabase/migrations/                          ← schema, 0001 → 0006 (apply in order)
 tests/                                        ← Vitest: unit + end-to-end, all services faked
-scripts/                                      ← CLI helpers (seed, applications, backups)
+scripts/                                      ← CLI helpers (roster import, applications, billing, backups)
 .github/workflows/howdy-cron.yml              ← scheduler for the cron worker
 ```
 
@@ -91,7 +91,7 @@ npm ci
 cp .env.local.example .env.local   # fill in — every variable is documented there
 ```
 
-Apply `supabase/migrations/0001` → `0006` in the Supabase SQL editor, in order, then seed the roster with `npm run seed:supabase`. Run the site with `npm run dev`.
+Apply `supabase/migrations/0001` → `0007` in the Supabase SQL editor, in order. The roster lives only in Supabase: load it from the vetted CSV with `npm run import:freelancers` (the CSV holds personal data and is never committed), and add people through the application form + `npm run applications`. There are no sample profiles. Run the site with `npm run dev`.
 
 ## Tests
 
@@ -109,7 +109,6 @@ The fakes answer structured LLM calls with keyword heuristics (validated against
 |---|---|
 | `npm run dev` / `build` / `start` | Next.js |
 | `npm test` / `npm run test:watch` | Vitest |
-| `npm run seed:supabase` | Embed + push the seeded freelancers |
 | `npm run import:freelancers` | Import freelancers from a CSV |
 | `npm run applications -- list \| approve <id> \| reject <id>` | Review roster applications |
 | `npm run billing -- list \| invoiced <id>` | Billable intros not yet invoiced |

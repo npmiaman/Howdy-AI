@@ -43,7 +43,7 @@ class GeminiEmbedder {
       );
     }
     const out: number[][] = [];
-    // The REST API has an embedContents (batch) endpoint, but per-call is fine for our seed sizes
+    // The REST API has an embedContents (batch) endpoint, but per-call is fine for our roster size
     // and gives clearer errors during dev.
     for (const text of texts) {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:embedContent?key=${process.env.GOOGLE_API_KEY}`;
@@ -80,16 +80,4 @@ export function getEmbeddingModel(): GeminiEmbedder {
   if (embedClient) return embedClient;
   embedClient = new GeminiEmbedder();
   return embedClient;
-}
-
-export function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
