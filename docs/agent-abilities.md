@@ -35,12 +35,12 @@ What the agent needs in order to feel like a sharp human talent scout rather tha
 ## Later (not in this round)
 Reading image attachments with a vision model, human-paced send times via scheduled sends, ranking that learns from check-in outcomes, WhatsApp.
 
-## Status
-| # | Ability | Status |
-|---|---|---|
-| 1 | Voice layer | planned |
-| 2 | Two-question asks · language mirroring · attachments | planned |
-| 3 | Freelancer Q&A · human hand-over | planned |
-| 4 | Memory write-back | planned |
-| 5 | Progress note | planned |
-| 6 | Anonymisation check | planned |
+## Status (2026-09-29)
+| # | Ability | Status | Evidence |
+|---|---|---|---|
+| 1 | Voice layer | shipped | Live, 5 real messages on gemini-3.5-flash-lite: humanizer score 10.0 → 2.2 on average, and dash/markdown/stock-phrase hits 2 → 0. The intro email went from 46 to 0. One message got slightly worse (0 → 8); treat as directional. `npm run howdy:voice-check` |
+| 2 | Two-question asks · language mirroring · attachments | shipped | Live: a plain brief got "When do you need this film finished, and what kind of budget do you have in mind?". A brief written in Chinese was answered in Chinese. Attachment filenames reach every prompt. |
+| 3 | Freelancer Q&A · human hand-over | shipped | Live: the upset client and the refund question were both flagged for hand-over, and the plain brief wasn't. Q&A answers only from the anonymised brief (tested). |
+| 4 | Memory write-back | shipped | Brief facts and check-in outcomes are saved, deduped (tested). |
+| 5 | Progress note | shipped | One note at 8h+ with no shortlist, never twice (tested). |
+| 6 | Anonymisation check | shipped | A pitch naming the client falls back to fixed words. The test fails when the check is disabled. |

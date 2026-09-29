@@ -1,5 +1,23 @@
 # Decisions
 
+## 2026-09-29 (evening) — Agent abilities round (docs/agent-abilities.md)
+
+- **Voice: prevention plus a check, not a blanket rewrite.** The voice guide
+  (from blader/humanizer, MIT) goes on every writing prompt. Each AI-written
+  message is scored by brandonwise/humanizer (MIT, pinned commit, zero deps).
+  Only messages that still read as AI get one rewrite, and it's kept only if
+  it scores better and keeps every number and link. Clean text costs nothing
+  extra. Chosen over always rewriting (doubles latency on the free tier) and
+  over a detector-only approach (flags without fixing).
+- **Hand-over rides on existing classifiers** (assessor, client-reply
+  router), so it adds no extra AI calls. Payment, refund, pricing and legal
+  questions go to a person, because pricing on the site is still
+  contradictory.
+- **Freelancer answers use only the anonymised brief**; the client's
+  identity is never revealed before they accept.
+- **Anonymisation is checked after writing.** A leaked name means the fixed
+  pitch goes out instead, trading warmth for privacy on the rare leak.
+
 ## 2026-09-29 (later) — Take-over, limits, opt-outs, billing, digest
 
 - **Human takeover is detected, not declared.** Howdy labels its own sends
