@@ -16,7 +16,12 @@ export type Sent = {
   subject: string;
   text: string;
   inReplyTo: string | null;
+  /** AgentMail labels: our code's sends carry "howdy-auto"; a person's don't. */
+  labels: string[];
+  at: number;
 };
+
+const AUTO = ["sent", "howdy-auto"];
 
 type Known = {
   threadId: string;
@@ -56,6 +61,8 @@ export class FakeAgentMail {
       subject: args.subject,
       text: args.text,
       inReplyTo: null,
+      labels: AUTO,
+      at: Date.now(),
     };
     this.sent.push(rec);
     this.known.set(messageId, {
@@ -92,6 +99,8 @@ export class FakeAgentMail {
       subject,
       text: args.text,
       inReplyTo: args.messageId,
+      labels: AUTO,
+      at: Date.now(),
     };
     this.sent.push(rec);
     this.known.set(messageId, {
@@ -161,6 +170,28 @@ export class FakeAgentMail {
         timestamp: new Date().toISOString(),
       },
     };
+  }
+
+  /** Someone on the team replies by hand (Momo / AgentMail console) on a thread. */
+  humanReply(args: { threadId: string; to: string; text: string; subject?: string }) {
+    this.sent.push({
+      kind: "reply",
+      messageId: this.id("msg"),
+      threadId: args.threadId,
+      to: [args.to],
+      cc: [],
+      subject: args.subject ?? "Re: (manual)",
+      text: args.text,
+      inReplyTo: null,
+      labels: ["sent"],
+      at: Date.now(),
+    });
+  }
+
+  async threadHasHumanReply(threadId: string, since: Date): Promise<boolean> {
+    return this.sent.some(
+      (s) => s.threadId === threadId && !s.labels.includes("howdy-auto") && s.at >= since.getTime(),
+    );
   }
 
   /** Everything sent to (or cc'd to) an address, oldest first. */

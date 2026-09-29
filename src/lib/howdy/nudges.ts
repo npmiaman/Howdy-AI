@@ -41,6 +41,7 @@ export async function sendLeadNudges(): Promise<{ sent: number; skippedDryRun: n
     .lte("created_at", newest)
     .gte("created_at", oldest)
     .is("last_processed_at", null)
+    .eq("ai_paused", false)
     .not("user_email", "ilike", "%@howdy.chat");
   if (error) throw error;
   const all = (threads ?? []) as ThreadLite[];

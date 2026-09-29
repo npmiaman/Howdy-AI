@@ -28,17 +28,21 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
- * The saga records which candidates the client was shown (migration 0006).
- * Without that column every shortlist step would claim a request, fail, and
- * release it again on every run — so stop loudly instead.
+ * The saga needs migrations 0006 (shown_to_client_at) and 0007 (takeover,
+ * opt-outs, billing). Without them every step would claim a request, fail,
+ * and release it again on every run — so stop loudly instead.
  */
 async function schemaProblem(): Promise<string | null> {
   try {
-    const { error } = await getSupabaseAdmin()
-      .from("match_candidates")
-      .select("shown_to_client_at")
-      .limit(1);
-    return error ? error.message : null;
+    const sb = getSupabaseAdmin();
+    const checks = await Promise.all([
+      sb.from("match_candidates").select("shown_to_client_at").limit(1),
+      sb.from("threads").select("ai_paused").limit(1),
+      sb.from("email_suppressions").select("email").limit(1),
+      sb.from("billable_intros").select("id").limit(1),
+    ]);
+    const failed = checks.find((c) => c.error);
+    return failed?.error ? failed.error.message : null;
   } catch (err) {
     return errorMessage(err);
   }
@@ -76,7 +80,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: `schema check failed — is supabase/migrations/0006 applied? (${problem})`,
+        error: `schema check failed — are supabase/migrations/0006 and 0007 applied? (${problem})`,
       },
       { status: 500 },
     );

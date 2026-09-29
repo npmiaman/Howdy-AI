@@ -44,6 +44,8 @@ export async function maybeNotifyInbound(args: {
   subject?: string | null;
   body: string;
   senderType: "client" | "freelancer";
+  /** Appended to the alert, e.g. a link to take the conversation over. */
+  note?: string;
 }): Promise<void> {
   const preview = args.body.replace(/\s+/g, " ").trim();
   const clipped = preview.slice(0, 240);
@@ -57,6 +59,7 @@ export async function maybeNotifyInbound(args: {
       ``,
       clipped ? `"${clipped}${preview.length > 240 ? "…" : ""}"` : "(no preview)",
       ``,
+      ...(args.note ? [args.note, ``] : []),
       `— Howdy`,
     ].join("\n"),
   });

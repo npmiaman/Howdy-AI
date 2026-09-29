@@ -36,6 +36,8 @@ vi.mock("@/lib/agentmail/client", async (importOriginal) => {
       fakeMail.sendFreshEmail(a),
     replyToMessage: (a: Parameters<typeof fakeMail.replyToMessage>[0]) =>
       fakeMail.replyToMessage(a),
+    threadHasHumanReply: (threadId: string, since: Date) =>
+      fakeMail.threadHasHumanReply(threadId, since),
   };
 });
 

@@ -9,6 +9,8 @@
 import { replyToMessage, sendFreshEmail } from "@/lib/agentmail/client";
 import { envList } from "@/lib/utils";
 
+import { notifyOps } from "./notify";
+import { isPaused, takeoverLink } from "./takeover";
 import { appendMessage } from "./threads";
 
 export function isDryRun(): boolean {
@@ -47,6 +49,24 @@ export async function dispatch(args: {
   /** Record the email on this conversation once it has really gone out. */
   threadId?: string | null;
 }): Promise<SendResult> {
+  // A human is handling this conversation: hold the email for them instead.
+  if (args.threadId && (await isPaused(args.threadId))) {
+    await notifyOps({
+      subject: `✋ Howdy held an email to ${args.to} (a human is handling this conversation)`,
+      text: [
+        `Howdy was about to send this (${args.kind}) but the conversation is paused:`,
+        "",
+        `To: ${args.to}`,
+        `Subject: ${args.subject}`,
+        "",
+        args.text,
+        "",
+        `Send it yourself if it's right, or hand the conversation back to Howdy: ${takeoverLink(args.threadId, "auto")}`,
+        "— Howdy",
+      ].join("\n"),
+    });
+    return { messageId: "held", threadId: "held", delivered: false };
+  }
   if (!wouldSend([args.to, ...(args.cc ?? [])])) {
     const id = `dry_${Math.random().toString(36).slice(2, 10)}`;
     console.log(

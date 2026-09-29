@@ -32,3 +32,6 @@ export function envList(value: string | undefined, fallback = ""): string[] {
 export function sameEmail(a: unknown, b: string): boolean {
   return typeof a === "string" && a.trim().toLowerCase() === b.trim().toLowerCase()
 }
+
+/** Public site origin, for links inside emails. */
+export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.bridgecreatives.co"

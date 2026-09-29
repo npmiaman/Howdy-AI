@@ -60,6 +60,8 @@ const DEFAULTS: Record<string, () => Row> = {
     subject: null,
     brief: {},
     last_processed_at: null,
+    ai_paused: false,
+    ai_mode_changed_at: null,
   }),
   messages: () => ({ gmail_message_id: null }),
   freelancers: () => ({ embedding: null }),
