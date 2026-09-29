@@ -72,7 +72,8 @@ scripts/                                      ← CLI helpers (seed, application
 
 - **`HOWDY_OUTREACH_DRYRUN`** (default on): every saga email — invites, shortlists, intros, check-ins, status replies, nudges — is logged, not sent, unless this is exactly `false`. Intake replies (clarifying questions, the "on it" ack, acknowledgements to freelancers writing in) always send.
 - **`HOWDY_DRYRUN_ALLOWLIST`**: while dry-run is on, emails whose recipients are all on this list really go out — run the full flow on your own addresses without touching real freelancers.
-- **Idempotency**: every step that sends email first claims its state change with a conditional update, so overlapping cron runs and webhook retries can't double-invite or double-send. Duplicate webhook deliveries are skipped.
+- **Idempotency**: every step that sends email first claims its state change with a conditional update, so overlapping cron runs and webhook retries can't double-invite or double-send. Claims expire after 10 minutes, so a run killed mid-step is picked up by the next one. Duplicate webhook deliveries are skipped.
+- **Time limits**: model calls retry at most once, and the webhook alerts ops if handling passes 50s, instead of being killed silently at Vercel's 60s limit.
 
 ## Local setup
 
@@ -104,6 +105,7 @@ The fakes answer structured LLM calls with keyword heuristics (validated against
 | `npm run applications -- list \| approve <id> \| reject <id>` | Review roster applications |
 | `npm run backup:db` / `mirror:backfill` | Local DB backup / backfill the mirror DB |
 | `npm run howdy` / `howdy:smoke` / `howdy:multi` | Talk to the agent locally |
+| `npm run howdy:reply-check` | Live check of the reply classifier against real Gemini |
 | `npm run agentmail:inboxes` | List inboxes the API key can see |
 
 ## Going live
@@ -111,11 +113,12 @@ The fakes answer structured LLM calls with keyword heuristics (validated against
 In this order:
 
 1. **Run migration `0006`** in Supabase. The cron refuses to run without it.
-2. **Set env vars on Vercel** (see `.env.local.example`), including `AGENTMAIL_WEBHOOK_SECRET` — the webhook's `whsec_…` signing secret from AgentMail (`webhooks.get(<id>).secret`). In production the webhook rejects every request until it's set.
-3. **Deploy** (merge to `main`).
-4. **Scheduler**: something must call `GET /api/howdy/process-pending` with `Authorization: Bearer $CRON_SECRET` every ~15 minutes. The GitHub Actions workflow does this, but GitHub disables scheduled workflows after 60 days without commits — an external scheduler (e.g. cron-job.org) or Vercel Pro cron is more durable. Use one scheduler.
-5. **Enable the AgentMail webhook** (`message.received` → `https://<domain>/api/agentmail/webhook`).
-6. **Test in dry-run** with your own addresses on `HOWDY_DRYRUN_ALLOWLIST`, then set `HOWDY_OUTREACH_DRYRUN=false`.
+2. **Fix the model setup.** On 2026-09-29 `gemini-flash-latest` resolved to `gemini-3.8-flash`, which took 17–55s per call, returned 503s under load, and the key hit its quota (429). A client turn makes 2–3 calls inside a 60s function. Pin `GEMINI_CHAT_MODEL` to a faster model (try a `flash-lite`, or set `GEMINI_THINKING_LEVEL=LOW`), check billing/quota, then run `npm run howdy:reply-check`.
+3. **Set env vars on Vercel** (see `.env.local.example`), including `AGENTMAIL_WEBHOOK_SECRET` — the webhook's `whsec_…` signing secret from AgentMail (`webhooks.get(<id>).secret`). In production the webhook rejects every request until it's set.
+4. **Deploy** (merge to `main`).
+5. **Scheduler**: something must call `GET /api/howdy/process-pending` with `Authorization: Bearer $CRON_SECRET` every ~15 minutes. The GitHub Actions workflow does this, but GitHub disables scheduled workflows after 60 days without commits — an external scheduler (e.g. cron-job.org) or Vercel Pro cron is more durable. Use one scheduler.
+6. **Enable the AgentMail webhook** (`message.received` → `https://<domain>/api/agentmail/webhook`).
+7. **Test in dry-run** with your own addresses on `HOWDY_DRYRUN_ALLOWLIST`, then set `HOWDY_OUTREACH_DRYRUN=false`.
 
 ## Tweaking behavior
 

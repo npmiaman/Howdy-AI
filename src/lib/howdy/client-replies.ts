@@ -133,7 +133,7 @@ export async function handleClientReply(args: {
     (await getFreelancersByIds(shown.map((c) => c.freelancerId))).map((f) => [f.id, f]),
   );
 
-  const intent = await classify(text, shown, freelancers);
+  const intent = await classifyClientReply(text, shown, freelancers);
   const shownIds = new Set(shown.map((c) => c.freelancerId));
   const ids = intent.chosen_freelancer_ids.filter((id) => shownIds.has(id));
 
@@ -194,7 +194,7 @@ export async function handleClientReply(args: {
   return { action: "client_other" };
 }
 
-async function classify(
+export async function classifyClientReply(
   text: string,
   shown: MatchCandidate[],
   freelancers: Map<string, Freelancer>,
