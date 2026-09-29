@@ -6,7 +6,7 @@ import { rateLabel } from "./data";
 import { extractBrief } from "./extractor";
 import { generateText } from "./generate";
 import { findBestMatch } from "./matcher";
-import { memoriesAsContext } from "./memories";
+import { briefFacts, memoriesAsContext, remember } from "./memories";
 import {
   type PendingMatch,
   schedulePendingMatch,
@@ -152,6 +152,7 @@ async function scheduleNode(
     subject: state.subject,
     brief: state.brief,
   });
+  if (state.userEmail) await remember(state.userEmail, briefFacts(state.brief));
 
   const text = await generateText(
     ACK_SYSTEM_PROMPT,

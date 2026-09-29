@@ -12,6 +12,7 @@ import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
 import { listCandidates } from "./candidates";
 import { getFreelancerMap, getFreelancersByIds } from "./data";
 import { dispatch } from "./mailer";
+import { remember } from "./memories";
 import { notifyOps } from "./notify";
 import { startRematch } from "./outreach";
 import { rematchStartedNotice } from "./outreach-content";
@@ -297,7 +298,20 @@ export async function handleCheckinReply(args: {
       return { stage: "digging_more" };
     }
 
-    // Enough detail — branch on sentiment. A freelancer can't be "rematched"
+    // Enough detail. Remember how it went for the client's next search.
+    if (ch.party === "company") {
+      const who = await counterpartName(ch);
+      await remember(
+        ch.toEmail,
+        [
+          sentiment === "good"
+            ? `Worked well with ${who}: ${feedback.replace(/\s+/g, " ").slice(0, 160)}`
+            : `Didn't click with ${who}: ${feedback.replace(/\s+/g, " ").slice(0, 160)}`,
+        ],
+      );
+    }
+
+    // Branch on sentiment. A freelancer can't be "rematched"
     // to a different client, so their bad-call feedback goes to the team.
     if (sentiment === "bad" && ch.party === "freelancer") {
       const ack = await feedbackAck({ party: ch.party, sentiment: "bad" });

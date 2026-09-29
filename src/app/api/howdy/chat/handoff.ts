@@ -9,7 +9,7 @@ import { z } from "zod";
 
 import { isAgentMailConfigured, sendFreshEmail } from "@/lib/agentmail/client";
 import { requestMeta, upsertLead } from "@/lib/howdy/leads";
-import { saveMemories } from "@/lib/howdy/memories";
+import { briefFacts, remember } from "@/lib/howdy/memories";
 import { notifyOps } from "@/lib/howdy/notify";
 import { schedulePendingMatch } from "@/lib/howdy/scheduler";
 import {
@@ -219,13 +219,11 @@ async function persistHandoff(args: {
     problems.push("schedule match: skipped (no email thread)");
   }
 
-  await saveMemories({
-    userEmail: args.email,
-    facts: [
-      `Name: ${args.name}.`,
-      `Sent a brief via the website chat on ${new Date().toISOString().slice(0, 10)}.`,
-    ],
-  });
+  await remember(args.email, [
+    `Name: ${args.name}.`,
+    `Sent a brief via the website chat on ${new Date().toISOString().slice(0, 10)}.`,
+    ...briefFacts(args.brief),
+  ]);
 
   if (problems.length) {
     console.error("[howdy/chat] HANDOFF INCOMPLETE", {
