@@ -9,6 +9,8 @@ import { z } from "zod";
 import { assessBrief } from "@/lib/howdy/assessor";
 import { extractBrief } from "@/lib/howdy/extractor";
 import { generateText } from "@/lib/howdy/generate";
+import { requestMeta } from "@/lib/howdy/leads";
+import { hitRateLimit, LIMITS, spendAiTurn } from "@/lib/howdy/rate-limit";
 import {
   appendMessageDeduped,
   findOrCreateThread,
@@ -198,6 +200,24 @@ export async function POST(request: Request) {
   // Capture the message up front — even before checking the LLM is online, so a
   // misconfigured/offline agent never costs us the visitor's message.
   const threadId = await cacheInbound(sessionKey, parsed.data.messages);
+
+  // Limits before any AI work (the message above is already saved).
+  const { ip } = requestMeta(request);
+  const allowed =
+    (await hitRateLimit(`chat:session:${sessionKey}`, LIMITS.chatPerSession())) &&
+    (!ip || (await hitRateLimit(`chat:ip:${ip}`, LIMITS.chatPerIp())));
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "That's a lot of messages! Email howdyai@agentmail.to and I'll pick it up there." },
+      { status: 429 },
+    );
+  }
+  if (!(await spendAiTurn())) {
+    return NextResponse.json(
+      { error: "I'm swamped right now — email howdyai@agentmail.to and I'll get back to you." },
+      { status: 429 },
+    );
+  }
 
   if (!process.env.GOOGLE_API_KEY) {
     return NextResponse.json(

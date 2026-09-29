@@ -8,6 +8,7 @@ import {
 } from "@/lib/agentmail/client";
 import { requestMeta, upsertLead } from "@/lib/howdy/leads";
 import { saveMemories } from "@/lib/howdy/memories";
+import { hitRateLimit, LIMITS } from "@/lib/howdy/rate-limit";
 import {
   appendMessage,
   findMostRecentThreadByEmail,
@@ -54,6 +55,13 @@ async function hasDeliveredMatch(threadId: string): Promise<boolean> {
 }
 
 export async function POST(request: Request) {
+  const { ip: callerIp } = requestMeta(request);
+  if (callerIp && !(await hitRateLimit(`form:lead:${callerIp}`, LIMITS.formPerIp()))) {
+    return NextResponse.json(
+      { ok: false, error: "rate_limited", message: "Too many submissions — try again in an hour." },
+      { status: 429 },
+    );
+  }
   let payload: unknown;
   try {
     payload = await request.json();

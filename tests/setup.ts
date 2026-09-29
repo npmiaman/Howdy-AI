@@ -70,4 +70,6 @@ afterEach(() => {
   delete process.env.HOWDY_DRYRUN_ALLOWLIST;
   delete process.env.AGENTMAIL_WEBHOOK_SECRET;
   delete process.env.VERCEL_ENV;
+  for (const k of Object.keys(process.env))
+    if (/^HOWDY_(CHAT|FORM|INBOUND|DAILY)_/.test(k)) delete process.env[k];
 });

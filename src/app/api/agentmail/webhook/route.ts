@@ -36,6 +36,7 @@ import {
   markThreadProcessed,
   saveBrief,
 } from "@/lib/howdy/threads";
+import { hitRateLimit, LIMITS, spendAiTurn } from "@/lib/howdy/rate-limit";
 import { humanIsHandling, takeoverLink } from "@/lib/howdy/takeover";
 import { verifyWebhook } from "@/lib/howdy/webhook-auth";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client";
@@ -116,6 +117,17 @@ async function handledByHuman(
   return ok("human_handled");
 }
 
+/** Spend an AI turn; when today's budget is gone, pass the email to the team. */
+async function outOfBudget(email: AgentMailIncomingMessage): Promise<NextResponse | null> {
+  if (await spendAiTurn()) return null;
+  await alertOps(
+    email,
+    "⛽ Reply needed — Howdy is out of AI budget today",
+    "Howdy didn't reply because today's AI budget (HOWDY_DAILY_AI_TURNS) is used up.",
+  );
+  return ok("ai_budget_exhausted");
+}
+
 /** Reply in the conversation and record the reply on it. */
 async function replyAndRecord(email: AgentMailIncomingMessage, threadId: string, text: string) {
   const sent = await replyToMessage({ messageId: email.messageId, text });
@@ -194,6 +206,14 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
       return ok(verdict);
     }
 
+    // One sender flooding the inbox can't run up AI calls or replies.
+    if (!(await hitRateLimit(`inbound:${email.fromEmail.toLowerCase()}`, LIMITS.inboundPerSender()))) {
+      const hour = new Date().toISOString().slice(0, 13);
+      if (await hitRateLimit(`alert:flood:${email.fromEmail.toLowerCase()}:${hour}`, { max: 1, window: 3600 }))
+        await alertOps(email, "🚧 Howdy is rate-limiting a sender", "This sender went over the hourly limit; Howdy is ignoring their mail for now.");
+      return ok("rate_limited");
+    }
+
     // ------------------------------------------------------------------
     // Who is this? Matched by provider thread first, then by the reply
     // headers (In-Reply-To / References) — never by subject line.
@@ -230,7 +250,7 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
     // ------------------------------------------------------------------
     if (candidate) {
       const thread = await recordInbound(email);
-      const held = await handledByHuman(email, thread.id);
+      const held = (await handledByHuman(email, thread.id)) ?? (await outOfBudget(email));
       if (held) return held;
       await notify();
       const request = await getPendingById(candidate.requestId);
@@ -260,7 +280,7 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
     // ------------------------------------------------------------------
     if (checkin) {
       const thread = await recordInbound(email);
-      const held = await handledByHuman(email, thread.id);
+      const held = (await handledByHuman(email, thread.id)) ?? (await outOfBudget(email));
       if (held) return held;
       await notify();
       const result = await handleCheckinReply({ checkin, text: email.body });
@@ -306,7 +326,7 @@ async function handleInbound(email: AgentMailIncomingMessage): Promise<NextRespo
     // by where that request actually is; otherwise it's the brief conversation.
     // ------------------------------------------------------------------
     const thread = await recordInbound(email);
-    const held = await handledByHuman(email, thread.id);
+    const held = (await handledByHuman(email, thread.id)) ?? (await outOfBudget(email));
     if (held) return held;
     await notify(`Take this conversation over from Howdy: ${takeoverLink(thread.id, "human")}`);
     const [history, memories, request] = await Promise.all([
